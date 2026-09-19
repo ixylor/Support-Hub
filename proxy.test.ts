@@ -1,47 +1,26 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
-
-vi.mock("@/lib/auth/server", () => ({
-  auth: { api: { getSession: vi.fn() } },
-}));
-
-import { auth } from "@/lib/auth/server";
 import { proxy } from "./proxy";
 
-describe("dashboard proxy", () => {
-  it("redirects to /login when there is no session", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValueOnce(null);
+// Better Auth's default cookie name (no cookiePrefix/cookieName override is
+// configured in lib/auth/server.ts) — see better-auth/dist/cookies/index.mjs.
+const SESSION_COOKIE = "better-auth.session_token";
 
-    const response = await proxy(
-      new NextRequest("http://localhost:3000/dashboard")
-    );
+describe("dashboard proxy", () => {
+  it("redirects to /login when there is no session cookie", () => {
+    const response = proxy(new NextRequest("http://localhost:3000/dashboard"));
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/login");
   });
 
-  it("passes through when a session exists", async () => {
-    vi.mocked(auth.api.getSession).mockResolvedValueOnce({
-      user: { id: "1", role: "agent" },
-    } as never);
-
-    const response = await proxy(
-      new NextRequest("http://localhost:3000/dashboard")
+  it("passes through when a session cookie is present", () => {
+    const response = proxy(
+      new NextRequest("http://localhost:3000/dashboard", {
+        headers: { cookie: `${SESSION_COOKIE}=some-token-value` },
+      })
     );
 
     expect(response.status).toBe(200);
-  });
-
-  it("redirects to /login when session lookup fails", async () => {
-    vi.mocked(auth.api.getSession).mockRejectedValueOnce(
-      new Error("Auth service unavailable")
-    );
-
-    const response = await proxy(
-      new NextRequest("http://localhost:3000/dashboard")
-    );
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("/login");
   });
 });

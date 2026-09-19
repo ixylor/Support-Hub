@@ -1,15 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { auth } from "@/lib/auth/server";
+import { getSessionCookie } from "better-auth/cookies";
 
-export async function proxy(request: NextRequest) {
-  let session;
-  try {
-    session = await auth.api.getSession({ headers: request.headers });
-  } catch {
-    session = null;
-  }
+// Proxy is not meant for slow data fetching or full session management (see
+// Next.js's own guidance) — this is only an optimistic, cookie-presence
+// check. The dashboard layout does the authoritative auth.api.getSession
+// lookup (including the role check further down in settings pages), so an
+// expired-but-cookie-present session still gets caught there. This avoids
+// doing a full DB-backed session lookup twice per dashboard request.
+export function proxy(request: NextRequest) {
+  const sessionCookie = getSessionCookie(request);
 
-  if (!session) {
+  if (!sessionCookie) {
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }
