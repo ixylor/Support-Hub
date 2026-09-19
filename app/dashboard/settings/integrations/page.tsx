@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { saveGoogleCredentials } from "./actions";
 
 export default function IntegrationsSettingsPage() {
   const [clientId, setClientId] = useState("");
@@ -12,7 +11,14 @@ export default function IntegrationsSettingsPage() {
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
-    await saveGoogleCredentials(clientId, clientSecret);
+    const response = await fetch("/api/settings/integrations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, clientSecret }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to save integration credentials.");
+    }
     setSaved(true);
   }
 
