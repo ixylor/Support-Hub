@@ -80,4 +80,22 @@ describe("migration smoke test", () => {
 
     expect(rows.length).toBe(1);
   });
+
+  it("adds google to the mailbox_provider enum", async () => {
+    const rows = await db.execute<{ enumlabel: string }>(
+      sql`SELECT enumlabel FROM pg_enum
+        JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+        WHERE pg_type.typname = 'mailbox_provider'`
+    );
+
+    expect(rows.map((row) => row.enumlabel)).toEqual(expect.arrayContaining(["microsoft", "google"]));
+  });
+
+  it("enforces at most one active mailbox connection", async () => {
+    const rows = await db.execute<{ indexname: string }>(
+      sql`SELECT indexname FROM pg_indexes WHERE indexname = 'mailbox_connections_one_active'`
+    );
+
+    expect(rows.length).toBe(1);
+  });
 });
