@@ -46,6 +46,8 @@ skills-lock.json
 # playwright
 /test-results/
 
-# superpowers workflow scratch state (ledgers, task briefs, review diffs) —
-# docs/superpowers/{specs,plans} are intentionally tracked, this is not
+# superpowers workflow scratch state (ledgers, task briefs, review diffs)
 .superpowers/
+
+# design docs (specs/plans) — kept locally, not tracked in git
+docs/
