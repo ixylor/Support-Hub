@@ -5,7 +5,8 @@ const adminOnlyLinks = [
   { href: "/dashboard/knowledge-base", label: "Knowledge Base" },
   { href: "/dashboard/analytics", label: "Analytics" },
   { href: "/dashboard/settings/prompts", label: "Prompt Settings" },
-  { href: "/dashboard/settings/integrations", label: "Integrations" },
+  // Integrations link returns in the Ticket Ingestion phase, once the
+  // Microsoft Graph mailbox connection it configures actually exists.
 ];
 
 export function Nav({ role }: { role: "agent" | "admin" }) {

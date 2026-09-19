@@ -76,6 +76,10 @@ Better Auth.
 
 ## Notes
 
-- Google OAuth and Microsoft Graph credentials are entered through the
-  admin-only Integrations settings page and stored encrypted in the
-  `app_secrets` table — they are never set via `.env`.
+- Google OAuth (platform login) credentials are set via `.env`
+  (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) — they're a bootstrap
+  dependency the app needs to start, like `DATABASE_URL`.
+- Admin-managed integration credentials (e.g. the Microsoft Graph mailbox
+  connection, added in the Ticket Ingestion phase) are stored encrypted in
+  the `app_secrets` table instead, so they can be entered and rotated
+  through the dashboard without a redeploy.
