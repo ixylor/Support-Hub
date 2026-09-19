@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "prompt_templates_one_active_per_key" ON "prompt_templates" USING btree ("key") WHERE "prompt_templates"."is_active" = true;

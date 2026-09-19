@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { promptTemplates } from "@/lib/db/schema";
 
@@ -8,6 +8,12 @@ export async function activateNewPromptVersion(
   updatedByUserId: string
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    // Serializes concurrent activations for the same key so the read-then-write
+    // below can't race: without this, two callers could both read the same
+    // "previous version" and both insert, producing duplicate active rows.
+    // Released automatically at transaction end.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+
     const [previous] = await tx
       .select({ version: promptTemplates.version })
       .from(promptTemplates)

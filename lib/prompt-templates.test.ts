@@ -37,4 +37,21 @@ describe("prompt template versioning", () => {
 
     expect(result).toEqual({ content: "the content", version: 1 });
   });
+
+  it("serializes concurrent activations for the same key without duplicate active rows or versions", async () => {
+    const key = `test-prompt-${crypto.randomUUID()}`;
+
+    await Promise.all([
+      activateNewPromptVersion(key, "a", userId),
+      activateNewPromptVersion(key, "b", userId),
+    ]);
+
+    const rows = await db.select().from(promptTemplates).where(eq(promptTemplates.key, key));
+    const active = rows.filter((row) => row.isActive);
+    const versions = rows.map((row) => row.version);
+
+    expect(active).toHaveLength(1);
+    expect(rows).toHaveLength(2);
+    expect(new Set(versions).size).toBe(versions.length);
+  });
 });

@@ -36,6 +36,19 @@ test("an agent cannot see the prompt settings link", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Prompt Settings" })).not.toBeVisible();
 });
 
+test("an agent who navigates directly to the prompt settings URL is redirected away", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(agentEmail);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL("/dashboard");
+
+  await page.goto("/dashboard/settings/prompts");
+
+  await expect(page).toHaveURL("/dashboard");
+  await expect(page.getByRole("heading", { name: "Draft Reply Prompt" })).not.toBeVisible();
+});
+
 test("an admin can edit and save the draft reply prompt", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(adminEmail);

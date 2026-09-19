@@ -8,7 +8,9 @@ import {
   integer,
   boolean,
   vector,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { user } from "@/lib/auth/schema";
 
 export const mailboxProviderEnum = pgEnum("mailbox_provider", ["microsoft"]);
@@ -115,17 +117,28 @@ export const kbChunks = pgTable("kb_chunks", {
   embedding: vector("embedding", { dimensions: 1536 }),
 });
 
-export const promptTemplates = pgTable("prompt_templates", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  key: text("key").notNull(),
-  content: text("content").notNull(),
-  version: integer("version").notNull(),
-  isActive: boolean("is_active").notNull().default(true),
-  updatedByUserId: text("updated_by_user_id")
-    .notNull()
-    .references(() => user.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const promptTemplates = pgTable(
+  "prompt_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: text("key").notNull(),
+    content: text("content").notNull(),
+    version: integer("version").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Backstops the advisory-lock serialization in activateNewPromptVersion:
+    // even if that lock is ever bypassed, the DB itself can't hold two active
+    // versions for the same key.
+    uniqueIndex("prompt_templates_one_active_per_key")
+      .on(table.key)
+      .where(sql`${table.isActive} = true`),
+  ]
+);
 
 export const ticketAiDrafts = pgTable("ticket_ai_drafts", {
   id: uuid("id").primaryKey().defaultRandom(),
