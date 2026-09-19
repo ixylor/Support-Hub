@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Support Hub
 
-## Getting Started
+An internal support ticketing app with role-aware agent/admin access, backed
+by Postgres (with `pgvector` for future knowledge-base embeddings) and
+Better Auth.
 
-First, run the development server:
+## Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Node.js and [pnpm](https://pnpm.io)
+- Docker (for local Postgres)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Start Postgres:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   ```bash
+   docker compose up -d postgres
+   ```
 
-## Learn More
+   The `pgvector` extension is created automatically on first start via
+   `docker/init-db.sql`, which Postgres only runs against a fresh data
+   volume (i.e. the first time the `postgres_data` volume is created). If
+   you already have an existing volume from before this script existed,
+   create the extension manually once:
 
-To learn more about Next.js, take a look at the following resources:
+   ```bash
+   docker compose exec postgres psql -U support_hub -d support_hub -c "CREATE EXTENSION IF NOT EXISTS vector;"
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2. Copy the example environment file and fill it in:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   ```bash
+   cp .env.example .env
+   ```
 
-## Deploy on Vercel
+   Generate a value for `APP_ENCRYPTION_KEY` (the master key used to
+   encrypt OAuth app credentials at rest):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   Also set `BETTER_AUTH_SECRET` to a random string, and adjust
+   `DATABASE_URL` if Postgres isn't reachable on the default port (e.g. if
+   something else on your machine already uses 5432).
+
+3. Install dependencies:
+
+   ```bash
+   pnpm install
+   ```
+
+4. Run database migrations:
+
+   ```bash
+   pnpm db:migrate
+   ```
+
+5. Start the dev server:
+
+   ```bash
+   pnpm dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000).
+
+## Scripts
+
+- `pnpm dev` — start the Next.js dev server
+- `pnpm build` / `pnpm start` — production build and run
+- `pnpm lint` — lint the codebase
+- `pnpm test` / `pnpm test:watch` — Vitest unit/component tests
+- `pnpm test:e2e` — Playwright end-to-end tests
+- `pnpm db:generate` — generate a Drizzle migration from schema changes
+- `pnpm db:migrate` — apply pending migrations
+
+## Notes
+
+- Google OAuth and Microsoft Graph credentials are entered through the
+  admin-only Integrations settings page and stored encrypted in the
+  `app_secrets` table — they are never set via `.env`.
