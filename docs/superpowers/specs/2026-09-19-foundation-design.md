@@ -41,6 +41,11 @@ against the schema defined here.
 ## Stack
 
 - Next.js (App Router), React, existing shadcn/Tailwind setup.
+- Mutations are exposed as Next.js Route Handlers (`app/api/**/route.ts`)
+  rather than Server Actions. This keeps every mutation reachable as a
+  plain HTTP endpoint — useful once other phases add non-browser callers
+  (webhooks, background workers, scripts) — and keeps the request/response
+  contract explicit rather than implicit in a form's `action` binding.
 - Postgres with the `pgvector` extension, run locally via Docker Compose.
 - Drizzle ORM for schema, migrations, and queries.
 - Better Auth for agent authentication: email/password and Google OAuth.

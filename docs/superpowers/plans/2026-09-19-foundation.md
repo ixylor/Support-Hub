@@ -21,6 +21,7 @@
 - Vitest + React Testing Library for unit/component tests; Playwright for E2E and anything touching async Server Components.
 - `ticket_ai_drafts.graph_thread_id` is reserved now for LangGraph's checkpoint/thread reference; it is not populated until the AI Response Pipeline phase.
 - OAuth app credentials (Google, Microsoft Graph) are stored encrypted in `app_secrets`, not in `.env`. Only `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `APP_ENCRYPTION_KEY` live in the environment — a credential needed to reach or unlock the database cannot itself be stored in the database.
+- Mutations are exposed as Next.js Route Handlers (`app/api/**/route.ts`), not Server Actions. Client components call these endpoints with `fetch`.
 
 ---
 
@@ -33,7 +34,7 @@
 - `lib/secrets/crypto.ts` — AES-256-GCM encrypt/decrypt helpers keyed by `APP_ENCRYPTION_KEY`
 - `lib/secrets/store.ts` — `getSecret`/`setSecret` reading and writing `app_secrets`
 - `app/dashboard/settings/integrations/page.tsx` — admin-only form for Google and Microsoft Graph OAuth credentials
-- `app/dashboard/settings/integrations/actions.ts` — server action calling `setSecret`
+- `app/api/settings/integrations/route.ts` — POST handler calling `setSecret`
 - `lib/db/client.ts` — Drizzle client singleton
 - `lib/auth/schema.ts` — Better Auth's Drizzle schema, extended with `role`
 - `lib/auth/server.ts` — Better Auth server instance (providers, adapter, role field)
@@ -45,9 +46,9 @@
 - `app/dashboard/layout.tsx` — protected layout, renders nav
 - `app/dashboard/page.tsx` — placeholder landing page
 - `app/dashboard/settings/prompts/page.tsx` — admin-only prompt template editor
+- `app/api/settings/prompts/route.ts` — POST handler calling `activateNewPromptVersion`
 - `components/dashboard/nav.tsx` — role-aware navigation
 - `lib/prompt-templates.ts` — pure versioning logic (activate a new version, deactivate the previous one) plus data-access functions
-- `app/dashboard/settings/prompts/actions.ts` — server actions calling `lib/prompt-templates.ts`
 - `vitest.config.mts`, `vitest.setup.ts` — unit/component test config
 - `playwright.config.ts` — E2E test config
 - `e2e/` — Playwright specs
@@ -478,7 +479,7 @@ Expected: PASS (4 tests) — this only exercises Drizzle's in-memory table defin
 - Create: `lib/auth/server.ts`
 - Create: `lib/auth/client.ts`
 - Create: `app/api/auth/[...all]/route.ts`
-- Create: `app/dashboard/settings/integrations/actions.ts`
+- Create: `app/api/settings/integrations/route.ts`
 - Create: `app/dashboard/settings/integrations/page.tsx`
 - Create: `lib/auth/server.test.ts`
 - Modify: `package.json`, `.env.example` (already has the needed vars)
@@ -748,21 +749,23 @@ Expected: PASS — requires the Postgres container from Task 1 running and migra
 Lets an admin set the Google (and, in the Ticket Ingestion phase, Microsoft Graph) OAuth credentials without touching `.env`. There is no `Nav` link to this page yet — Task 7 adds it — so reach it directly at `/dashboard/settings/integrations` for now.
 
 ```ts
-// app/dashboard/settings/integrations/actions.ts
-"use server";
-
+// app/api/settings/integrations/route.ts
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { setSecret } from "@/lib/secrets/store";
 
-export async function saveGoogleCredentials(clientId: string, clientSecret: string) {
+export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || (session.user as { role: string }).role !== "admin") {
-    throw new Error("Only admins can edit integration credentials.");
+    return NextResponse.json({ error: "Only admins can edit integration credentials." }, { status: 403 });
   }
 
+  const { clientId, clientSecret } = await request.json();
   await setSecret("google_client_id", clientId, session.user.id);
   await setSecret("google_client_secret", clientSecret, session.user.id);
+
+  return NextResponse.json({ ok: true });
 }
 ```
 
@@ -774,7 +777,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { saveGoogleCredentials } from "./actions";
 
 export default function IntegrationsSettingsPage() {
   const [clientId, setClientId] = useState("");
@@ -782,7 +784,14 @@ export default function IntegrationsSettingsPage() {
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
-    await saveGoogleCredentials(clientId, clientSecret);
+    const response = await fetch("/api/settings/integrations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, clientSecret }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to save integration credentials.");
+    }
     setSaved(true);
   }
 
@@ -816,7 +825,7 @@ export default function IntegrationsSettingsPage() {
 - [ ] **Step 9: Commit (Tasks 2 and 3 together)**
 
 ```bash
-git add drizzle.config.ts lib/db lib/auth lib/secrets app/api/auth app/dashboard/settings/integrations drizzle package.json pnpm-lock.yaml
+git add drizzle.config.ts lib/db lib/auth lib/secrets app/api/auth app/api/settings/integrations app/dashboard/settings/integrations drizzle package.json pnpm-lock.yaml
 git commit -m "Add Drizzle domain schema and Better Auth with role support"
 ```
 
@@ -1291,8 +1300,9 @@ git commit -m "Add role-aware dashboard shell"
 **Files:**
 - Create: `lib/prompt-templates.ts`
 - Create: `lib/prompt-templates.test.ts`
-- Create: `app/dashboard/settings/prompts/actions.ts`
+- Create: `app/api/settings/prompts/route.ts`
 - Create: `app/dashboard/settings/prompts/page.tsx`
+- Create: `app/dashboard/settings/prompts/prompt-editor-form.tsx`
 - Create: `e2e/prompt-settings.spec.ts`
 
 **Interfaces:**
@@ -1415,23 +1425,25 @@ export async function getActivePromptTemplate(
 Run: `pnpm test lib/prompt-templates.test.ts`
 Expected: PASS (2 tests)
 
-- [ ] **Step 5: Add the server action and the admin page**
+- [ ] **Step 5: Add the API route and the admin page**
 
 ```ts
-// app/dashboard/settings/prompts/actions.ts
-"use server";
-
+// app/api/settings/prompts/route.ts
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { activateNewPromptVersion } from "@/lib/prompt-templates";
 
-export async function savePromptTemplate(key: string, content: string) {
+export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || (session.user as { role: string }).role !== "admin") {
-    throw new Error("Only admins can edit prompt templates.");
+    return NextResponse.json({ error: "Only admins can edit prompt templates." }, { status: 403 });
   }
 
+  const { key, content } = await request.json();
   await activateNewPromptVersion(key, content, session.user.id);
+
+  return NextResponse.json({ ok: true });
 }
 ```
 
@@ -1465,7 +1477,6 @@ export default async function PromptSettingsPage() {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { savePromptTemplate } from "./actions";
 
 export function PromptEditorForm({
   promptKey,
@@ -1482,7 +1493,14 @@ export function PromptEditorForm({
 
   async function handleSave() {
     setSaving(true);
-    await savePromptTemplate(promptKey, content);
+    const response = await fetch("/api/settings/prompts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: promptKey, content }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to save prompt template.");
+    }
     setSavedVersion((version) => version + 1);
     setSaving(false);
   }
@@ -1542,7 +1560,7 @@ Expected: PASS — depends on the admin/agent test users created in Task 6/7's E
 - [ ] **Step 8: Commit**
 
 ```bash
-git add lib/prompt-templates.ts lib/prompt-templates.test.ts app/dashboard/settings e2e/prompt-settings.spec.ts
+git add lib/prompt-templates.ts lib/prompt-templates.test.ts app/api/settings/prompts app/dashboard/settings/prompts e2e/prompt-settings.spec.ts
 git commit -m "Add admin-only prompt template versioning and settings page"
 ```
 
