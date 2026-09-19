@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth/server";
 
 export async function middleware(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: request.headers });
+  let session;
+  try {
+    session = await auth.api.getSession({ headers: request.headers });
+  } catch {
+    session = null;
+  }
 
   if (!session) {
     const loginUrl = new URL("/login", request.url);

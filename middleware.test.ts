@@ -31,4 +31,17 @@ describe("dashboard middleware", () => {
 
     expect(response.status).toBe(200);
   });
+
+  it("redirects to /login when session lookup fails", async () => {
+    vi.mocked(auth.api.getSession).mockRejectedValueOnce(
+      new Error("Auth service unavailable")
+    );
+
+    const response = await middleware(
+      new NextRequest("http://localhost:3000/dashboard")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/login");
+  });
 });
