@@ -31,8 +31,11 @@ export const mailboxConnections = pgTable("mailbox_connections", {
     .notNull()
     .references(() => user.id),
   status: mailboxStatusEnum("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const ticketStatusEnum = pgEnum("ticket_status", [
@@ -64,8 +67,11 @@ export const tickets = pgTable("tickets", {
   category: ticketCategoryEnum("category"),
   priority: ticketPriorityEnum("priority"),
   confidenceScore: numeric("confidence_score"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const messageDirectionEnum = pgEnum("message_direction", [
@@ -83,7 +89,7 @@ export const ticketMessages = pgTable("ticket_messages", {
   body: text("body").notNull(),
   messageIdHeader: text("message_id_header"),
   inReplyToHeader: text("in_reply_to_header"),
-  sentAt: timestamp("sent_at").notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const attachments = pgTable("attachments", {
@@ -101,8 +107,11 @@ export const kbEntries = pgTable("kb_entries", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   content: text("content").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 // Dimensions match Azure OpenAI's text-embedding-3-small; revisit if the
@@ -128,7 +137,7 @@ export const promptTemplates = pgTable(
     updatedByUserId: text("updated_by_user_id")
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     // Backstops the advisory-lock serialization in activateNewPromptVersion:
@@ -154,7 +163,7 @@ export const ticketAiDrafts = pgTable("ticket_ai_drafts", {
   // LangGraph checkpoint/thread reference, populated starting in the AI
   // Response Pipeline phase so an interrupted run can resume.
   graphThreadId: text("graph_thread_id"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const llmLogs = pgTable("llm_logs", {
@@ -163,7 +172,7 @@ export const llmLogs = pgTable("llm_logs", {
   prompt: text("prompt").notNull(),
   response: text("response").notNull(),
   model: text("model").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // OAuth app credentials, encrypted with APP_ENCRYPTION_KEY (see
@@ -175,5 +184,8 @@ export const appSecrets = pgTable("app_secrets", {
   updatedByUserId: text("updated_by_user_id")
     .notNull()
     .references(() => user.id),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });

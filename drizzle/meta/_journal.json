@@ -15,6 +15,13 @@
       "when": 1789819738735,
       "tag": "0001_secret_slipstream",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789820520665,
+      "tag": "0002_nostalgic_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }
