@@ -16,19 +16,26 @@ export function PromptEditorForm({
   const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
   const [savedVersion, setSavedVersion] = useState(currentVersion);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
     setSaving(true);
-    const response = await fetch("/api/settings/prompts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: promptKey, content }),
-    });
-    if (!response.ok) {
-      throw new Error("Failed to save prompt template.");
+    setError(null);
+    try {
+      const response = await fetch("/api/settings/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: promptKey, content }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to save prompt template.");
+      }
+      setSavedVersion((version) => version + 1);
+    } catch {
+      setError("Failed to save prompt template. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    setSavedVersion((version) => version + 1);
-    setSaving(false);
   }
 
   return (
@@ -43,6 +50,7 @@ export function PromptEditorForm({
           {saving ? "Saving..." : "Save"}
         </Button>
         <span className="text-sm text-muted-foreground">Active version: {savedVersion}</span>
+        {error ? <span className="text-sm text-destructive">{error}</span> : null}
       </div>
     </div>
   );
