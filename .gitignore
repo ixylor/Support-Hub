@@ -39,10 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
 .agents
 .claude
 skills-lock.json
 
 # playwright
 /test-results/
+
+# superpowers workflow scratch state (ledgers, task briefs, review diffs) —
+# docs/superpowers/{specs,plans} are intentionally tracked, this is not
+.superpowers/
