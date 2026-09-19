@@ -194,9 +194,11 @@ Better Auth is configured with:
 
 - Email/password provider
 - Google OAuth provider
-- A `role` field on the user record, checked by middleware protecting
-  `/dashboard/**` routes and by nav rendering (admins see Knowledge Base
-  and Analytics links; agents see Tickets).
+- A `role` field on the user record, checked by route-protection logic
+  guarding `/dashboard/**` (implemented as `proxy.ts` — Next.js 16 renamed
+  Edge middleware to a Node-runtime "proxy" convention) and by nav
+  rendering (admins see Knowledge Base and Analytics links; agents see
+  Tickets).
 
 The mailbox connection (Microsoft Graph OAuth) is a separate credential
 flow from agent login — it authorizes the app to access

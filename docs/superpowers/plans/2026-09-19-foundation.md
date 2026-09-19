@@ -40,7 +40,7 @@
 - `lib/auth/server.ts` — Better Auth server instance (providers, adapter, role field)
 - `lib/auth/client.ts` — Better Auth React client (hooks used by pages)
 - `app/api/auth/[...all]/route.ts` — Better Auth route handler
-- `middleware.ts` — protects `/dashboard/**`, redirects unauthenticated requests to `/login`
+- `proxy.ts` — protects `/dashboard/**`, redirects unauthenticated requests to `/login` (Next.js 16 renamed `middleware.ts` to `proxy.ts`; see Task 4's amendment note)
 - `components/branding/logo.tsx` — shared wordmark component
 - `app/login/page.tsx` — login page (email/password + Google)
 - `app/dashboard/layout.tsx` — protected layout, renders nav
@@ -833,9 +833,20 @@ git commit -m "Add Drizzle domain schema and Better Auth with role support"
 
 ### Task 4: Middleware protecting the dashboard
 
+> **Amendment (discovered during Task 6):** Next.js 16 removed Edge-runtime
+> middleware in favor of a `proxy.ts` convention (Node.js runtime by
+> default) — see `node_modules/next/dist/docs/**/proxy.md`. `middleware.ts`
+> crashed `/dashboard` with a 500 once it transitively imported Node's
+> `crypto` module (via `lib/secrets/store.ts`), because Edge doesn't have
+> it. The actual final files are `proxy.ts` and `proxy.test.ts`, with
+> `middleware`/`config` renamed to `proxy`/`config` — same logic, same
+> tests, new filename and export name. The steps below are left as
+> originally written (they're what Task 4 executed against at the time);
+> read `middleware.ts`/`middleware()` below as `proxy.ts`/`proxy()`.
+
 **Files:**
-- Create: `middleware.ts`
-- Create: `middleware.test.ts`
+- Create: `proxy.ts` (originally `middleware.ts`; renamed in Task 6 per the amendment above)
+- Create: `proxy.test.ts` (originally `middleware.test.ts`)
 
 **Interfaces:**
 - Consumes: `auth` from `lib/auth/server.ts` (Task 3).
