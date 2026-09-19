@@ -44,6 +44,9 @@ against the schema defined here.
 - Postgres with the `pgvector` extension, run locally via Docker Compose.
 - Drizzle ORM for schema, migrations, and queries.
 - Better Auth for agent authentication: email/password and Google OAuth.
+- AES-256-GCM encryption (Node's built-in `crypto` module) for OAuth app
+  credentials stored in `app_secrets`, keyed by a single `APP_ENCRYPTION_KEY`
+  env var.
 - Vitest + React Testing Library for unit/component tests; Playwright for
   end-to-end flows and anything involving async Server Components (which
   Vitest cannot render).
@@ -153,6 +156,22 @@ live edit does not retroactively change what an in-flight draft used.
   populated starting in the AI Response Pipeline phase
 - `created_at`
 
+### `app_secrets`
+
+Holds OAuth app credentials (Google, Microsoft Graph) encrypted at rest,
+so they don't sit as plaintext in `.env`. The decryption key itself
+(`APP_ENCRYPTION_KEY`) and `DATABASE_URL` are the only credentials that
+must still live in the environment — a value used to reach or unlock the
+database cannot itself be stored in the database.
+
+- `id`
+- `key` (e.g. `google_client_id`, `google_client_secret`,
+  `microsoft_graph_client_id`, `microsoft_graph_client_secret`,
+  `microsoft_graph_tenant_id`), unique
+- `encrypted_value`
+- `updated_by_user_id` (FK -> users.id)
+- `updated_at`
+
 ### `llm_logs`
 
 For debugging; PII beyond what's operationally necessary is not logged.
@@ -179,6 +198,15 @@ flow from agent login — it authorizes the app to access
 `support@<company>`'s mail, not a person's session. It is connected once
 by an admin from a settings page and stored in `mailbox_connections`.
 
+Google's OAuth app credentials (client ID/secret) are read from
+`app_secrets` (decrypted with `APP_ENCRYPTION_KEY`) rather than from
+`.env`. Because Better Auth's server instance is constructed once at
+module load, a credential change made through the admin settings page
+takes effect on the next server restart, not live — this is an accepted
+tradeoff for Foundation; the alternative (a fully dynamic auth config)
+adds complexity this phase doesn't need. Microsoft Graph credentials are
+stored the same way and read by the Ticket Ingestion phase.
+
 ## Scaffolding
 
 - `docker-compose.yml`: Postgres with `pgvector` extension enabled for
@@ -192,8 +220,12 @@ by an admin from a settings page and stored in `mailbox_connections`.
   rendering a styled text wordmark for now (app name via existing
   Tailwind/shadcn theme). Used in the login page and dashboard
   header/sidebar. Swapping to a real mark later touches only this file.
-- Env vars: database URL, Better Auth secret, Google OAuth credentials,
-  Microsoft Graph app credentials.
+- Env vars: database URL, Better Auth secret, and `APP_ENCRYPTION_KEY`
+  (the master key for `app_secrets`). Google OAuth and Microsoft Graph
+  credentials are entered once through an admin settings page and stored
+  encrypted in `app_secrets`, not in `.env`.
+- `app/dashboard/settings/integrations/page.tsx`: admin-only form to set
+  Google and Microsoft Graph OAuth credentials.
 - Vitest config (`vitest.config.mts`) and Playwright config, with test
   scripts in `package.json`.
 

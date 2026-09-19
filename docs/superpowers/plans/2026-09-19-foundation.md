@@ -20,6 +20,7 @@
 - Mailbox connection (Microsoft Graph OAuth) is a separate credential flow from agent login, stored in `mailbox_connections`, connected once by an admin — no OAuth flow is implemented in this phase, only the table.
 - Vitest + React Testing Library for unit/component tests; Playwright for E2E and anything touching async Server Components.
 - `ticket_ai_drafts.graph_thread_id` is reserved now for LangGraph's checkpoint/thread reference; it is not populated until the AI Response Pipeline phase.
+- OAuth app credentials (Google, Microsoft Graph) are stored encrypted in `app_secrets`, not in `.env`. Only `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `APP_ENCRYPTION_KEY` live in the environment — a credential needed to reach or unlock the database cannot itself be stored in the database.
 
 ---
 
@@ -28,7 +29,11 @@
 - `docker-compose.yml` — local Postgres + pgvector
 - `.env.example` — documents required env vars
 - `drizzle.config.ts` — Drizzle Kit config
-- `lib/db/schema.ts` — full domain schema (tickets, messages, attachments, KB, prompts, drafts, logs, mailbox connection)
+- `lib/db/schema.ts` — full domain schema (tickets, messages, attachments, KB, prompts, drafts, logs, mailbox connection, encrypted app secrets)
+- `lib/secrets/crypto.ts` — AES-256-GCM encrypt/decrypt helpers keyed by `APP_ENCRYPTION_KEY`
+- `lib/secrets/store.ts` — `getSecret`/`setSecret` reading and writing `app_secrets`
+- `app/dashboard/settings/integrations/page.tsx` — admin-only form for Google and Microsoft Graph OAuth credentials
+- `app/dashboard/settings/integrations/actions.ts` — server action calling `setSecret`
 - `lib/db/client.ts` — Drizzle client singleton
 - `lib/auth/schema.ts` — Better Auth's Drizzle schema, extended with `role`
 - `lib/auth/server.ts` — Better Auth server instance (providers, adapter, role field)
@@ -92,12 +97,15 @@ volumes:
 DATABASE_URL=postgres://support_hub:support_hub@localhost:5432/support_hub
 BETTER_AUTH_SECRET=replace-with-a-32-byte-random-string
 BETTER_AUTH_URL=http://localhost:3000
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-MICROSOFT_GRAPH_CLIENT_ID=
-MICROSOFT_GRAPH_CLIENT_SECRET=
-MICROSOFT_GRAPH_TENANT_ID=
+# 32-byte (64 hex character) key used to encrypt OAuth app credentials
+# stored in the app_secrets table. Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+APP_ENCRYPTION_KEY=
 ```
+
+Google and Microsoft Graph OAuth credentials are NOT env vars — they are
+entered through the admin Integrations settings page (Task 3) and stored
+encrypted in `app_secrets`.
 
 - [ ] **Step 3: Install test dependencies**
 
@@ -200,7 +208,7 @@ git commit -m "Add local Postgres/pgvector, Vitest, and Playwright scaffolding"
 - Modify: `package.json` (scripts + dependencies)
 
 **Interfaces:**
-- Produces: `db` (Drizzle client, from `lib/db/client.ts`), and every table export from `lib/db/schema.ts`: `tickets`, `ticketMessages`, `attachments`, `kbEntries`, `kbChunks`, `promptTemplates`, `ticketAiDrafts`, `llmLogs`, `mailboxConnections`, plus their enum exports (`ticketStatusEnum`, `ticketCategoryEnum`, `ticketPriorityEnum`, `messageDirectionEnum`, `mailboxProviderEnum`, `mailboxStatusEnum`).
+- Produces: `db` (Drizzle client, from `lib/db/client.ts`), and every table export from `lib/db/schema.ts`: `tickets`, `ticketMessages`, `attachments`, `kbEntries`, `kbChunks`, `promptTemplates`, `ticketAiDrafts`, `llmLogs`, `mailboxConnections`, `appSecrets`, plus their enum exports (`ticketStatusEnum`, `ticketCategoryEnum`, `ticketPriorityEnum`, `messageDirectionEnum`, `mailboxProviderEnum`, `mailboxStatusEnum`).
 - Consumes: nothing (first schema task).
 
 - [ ] **Step 1: Install Drizzle and the Postgres driver**
@@ -382,6 +390,18 @@ export const llmLogs = pgTable("llm_logs", {
   model: text("model").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// OAuth app credentials, encrypted with APP_ENCRYPTION_KEY (see
+// lib/secrets/crypto.ts). Keeps third-party client secrets out of .env.
+export const appSecrets = pgTable("app_secrets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: text("key").notNull().unique(),
+  encryptedValue: text("encrypted_value").notNull(),
+  updatedByUserId: text("updated_by_user_id")
+    .notNull()
+    .references(() => user.id),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 ```
 
 > **Note for the implementer:** confirm `vector` is exported from the installed `drizzle-orm/pg-core` version (`pnpm ls drizzle-orm`). If it is not yet available in the resolved version, upgrade `drizzle-orm` until it is — pgvector support must come from the library, not a hand-rolled custom type, so migrations stay generator-compatible.
@@ -407,7 +427,7 @@ This does not require a live database — it checks the exported table objects c
 ```ts
 // lib/db/schema.test.ts
 import { describe, expect, it } from "vitest";
-import { promptTemplates, ticketAiDrafts, tickets } from "./schema";
+import { appSecrets, promptTemplates, ticketAiDrafts, tickets } from "./schema";
 
 describe("domain schema", () => {
   it("exposes the columns the AI pipeline phase will rely on", () => {
@@ -427,13 +447,20 @@ describe("domain schema", () => {
       expect.arrayContaining(["key", "version", "isActive"])
     );
   });
+
+  it("stores OAuth credentials as an encrypted value, never plaintext", () => {
+    expect(Object.keys(appSecrets)).toEqual(
+      expect.arrayContaining(["key", "encryptedValue"])
+    );
+    expect(Object.keys(appSecrets)).not.toContain("value");
+  });
 });
 ```
 
 - [ ] **Step 6: Run it**
 
 Run: `pnpm test lib/db/schema.test.ts`
-Expected: PASS (3 tests) — this only exercises Drizzle's in-memory table definitions, not a database connection, so it passes before migrations exist.
+Expected: PASS (4 tests) — this only exercises Drizzle's in-memory table definitions, not a database connection, so it passes before migrations exist.
 
 - [ ] **Step 7: Commit**
 
@@ -445,15 +472,20 @@ Expected: PASS (3 tests) — this only exercises Drizzle's in-memory table defin
 
 **Files:**
 - Create: `lib/auth/schema.ts`
+- Create: `lib/secrets/crypto.ts`
+- Create: `lib/secrets/crypto.test.ts`
+- Create: `lib/secrets/store.ts`
 - Create: `lib/auth/server.ts`
 - Create: `lib/auth/client.ts`
 - Create: `app/api/auth/[...all]/route.ts`
+- Create: `app/dashboard/settings/integrations/actions.ts`
+- Create: `app/dashboard/settings/integrations/page.tsx`
 - Create: `lib/auth/server.test.ts`
 - Modify: `package.json`, `.env.example` (already has the needed vars)
 
 **Interfaces:**
-- Produces: `auth` (Better Auth server instance, `lib/auth/server.ts`), `authClient` with `signIn`, `signUp`, `signOut`, `useSession` (`lib/auth/client.ts`), `user` table export (`lib/auth/schema.ts`, consumed by Task 2's foreign keys).
-- Consumes: `db` from `lib/db/client.ts` is NOT used here — Better Auth needs its own un-augmented client to avoid a circular import with `lib/db/schema.ts`; it gets a dedicated `postgres()` connection.
+- Produces: `auth` (Better Auth server instance, `lib/auth/server.ts`), `authClient` with `signIn`, `signUp`, `signOut`, `useSession` (`lib/auth/client.ts`), `user` table export (`lib/auth/schema.ts`, consumed by Task 2's foreign keys), `getSecret`/`setSecret` (`lib/secrets/store.ts`, consumed by later phases needing Microsoft Graph credentials).
+- Consumes: `db` from `lib/db/client.ts` is used by `lib/secrets/store.ts` only — Better Auth's own connection stays separate (its own `postgres()` client) to avoid a circular import with `lib/db/schema.ts`.
 
 - [ ] **Step 1: Install Better Auth**
 
@@ -516,7 +548,111 @@ export const verification = pgTable("verification", {
 
 Use the `better-auth-best-practices` and `create-auth` skills here to verify this table shape and the adapter wiring in Step 3 match the installed Better Auth version's expectations before moving on — Better Auth's generated schema is the source of truth if it disagrees with the hand-written version above.
 
+- [ ] **Step 2b: Add the encrypted secrets store**
+
+Google's OAuth app credentials live encrypted in the `app_secrets` table (Task 2), not in `.env` — see the Foundation spec's Auth section. `lib/auth/server.ts` (Step 3) reads them through this module at import time.
+
+```ts
+// lib/secrets/crypto.ts
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+
+const ALGORITHM = "aes-256-gcm";
+
+function getKey(): Buffer {
+  const hexKey = process.env.APP_ENCRYPTION_KEY;
+  if (!hexKey) {
+    throw new Error("APP_ENCRYPTION_KEY is not set.");
+  }
+  return Buffer.from(hexKey, "hex");
+}
+
+// Ciphertext is stored as iv:authTag:data, all hex-encoded, so a single
+// text column round-trips the pieces GCM needs to decrypt.
+export function encryptSecret(plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(ALGORITHM, getKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return [iv.toString("hex"), authTag.toString("hex"), encrypted.toString("hex")].join(":");
+}
+
+export function decryptSecret(ciphertext: string): string {
+  const [ivHex, authTagHex, dataHex] = ciphertext.split(":");
+  const decipher = createDecipheriv(ALGORITHM, getKey(), Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+
+  return Buffer.concat([decipher.update(Buffer.from(dataHex, "hex")), decipher.final()]).toString(
+    "utf8"
+  );
+}
+```
+
+```ts
+// lib/secrets/store.ts
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { appSecrets } from "@/lib/db/schema";
+import { decryptSecret, encryptSecret } from "./crypto";
+
+export async function getSecret(key: string): Promise<string | null> {
+  const [row] = await db
+    .select({ encryptedValue: appSecrets.encryptedValue })
+    .from(appSecrets)
+    .where(eq(appSecrets.key, key))
+    .limit(1);
+
+  return row ? decryptSecret(row.encryptedValue) : null;
+}
+
+export async function setSecret(
+  key: string,
+  value: string,
+  updatedByUserId: string
+): Promise<void> {
+  await db
+    .insert(appSecrets)
+    .values({ key, encryptedValue: encryptSecret(value), updatedByUserId })
+    .onConflictDoUpdate({
+      target: appSecrets.key,
+      set: { encryptedValue: encryptSecret(value), updatedByUserId, updatedAt: new Date() },
+    });
+}
+```
+
+Write a unit test proving `crypto.ts` round-trips correctly and rejects a tampered ciphertext (GCM's authentication tag exists precisely to catch this — an untested `encrypt`/`decrypt` pair could silently accept corrupted data if the auth tag were wired up wrong):
+
+```ts
+// lib/secrets/crypto.test.ts
+import { beforeAll, describe, expect, it } from "vitest";
+import { decryptSecret, encryptSecret } from "./crypto";
+
+beforeAll(() => {
+  process.env.APP_ENCRYPTION_KEY = "0".repeat(64);
+});
+
+describe("secret encryption", () => {
+  it("decrypts to the original plaintext", () => {
+    const ciphertext = encryptSecret("a-client-secret-value");
+    expect(decryptSecret(ciphertext)).toBe("a-client-secret-value");
+  });
+
+  it("rejects a tampered ciphertext", () => {
+    const ciphertext = encryptSecret("a-client-secret-value");
+    const [iv, authTag, data] = ciphertext.split(":");
+    const tampered = [iv, authTag, data.slice(0, -2) + "00"].join(":");
+
+    expect(() => decryptSecret(tampered)).toThrow();
+  });
+});
+```
+
+Run: `pnpm test lib/secrets/crypto.test.ts`
+Expected: PASS (2 tests)
+
 - [ ] **Step 3: Configure the Better Auth server instance**
+
+Better Auth's server instance is a module-level singleton constructed once at import time, so the Google credentials it needs must be read before `betterAuth(...)` is called. Top-level `await` in a server-only ES module (Next.js runs this file only on the server) makes that read straightforward. If no credentials are stored yet — e.g. on a fresh install before an admin has visited the Integrations settings page — the provider is configured with empty strings, and Google sign-in requests will fail until they're set. Restarting the server after saving credentials is required for them to take effect (this tradeoff is recorded in the Foundation spec).
 
 ```ts
 // lib/auth/server.ts
@@ -525,9 +661,13 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { getSecret } from "@/lib/secrets/store";
 
 const queryClient = postgres(process.env.DATABASE_URL!);
 const authDb = drizzle(queryClient, { schema });
+
+const googleClientId = (await getSecret("google_client_id")) ?? "";
+const googleClientSecret = (await getSecret("google_client_secret")) ?? "";
 
 export const auth = betterAuth({
   database: drizzleAdapter(authDb, { provider: "pg", schema }),
@@ -536,8 +676,8 @@ export const auth = betterAuth({
   },
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
     },
   },
   user: {
@@ -603,10 +743,80 @@ describe("auth server", () => {
 Run: `pnpm test lib/auth/server.test.ts`
 Expected: PASS — requires the Postgres container from Task 1 running and migrations from Step 6 applied.
 
+- [ ] **Step 8b: Add the admin Integrations settings page**
+
+Lets an admin set the Google (and, in the Ticket Ingestion phase, Microsoft Graph) OAuth credentials without touching `.env`. There is no `Nav` link to this page yet — Task 7 adds it — so reach it directly at `/dashboard/settings/integrations` for now.
+
+```ts
+// app/dashboard/settings/integrations/actions.ts
+"use server";
+
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth/server";
+import { setSecret } from "@/lib/secrets/store";
+
+export async function saveGoogleCredentials(clientId: string, clientSecret: string) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session || (session.user as { role: string }).role !== "admin") {
+    throw new Error("Only admins can edit integration credentials.");
+  }
+
+  await setSecret("google_client_id", clientId, session.user.id);
+  await setSecret("google_client_secret", clientSecret, session.user.id);
+}
+```
+
+```tsx
+// app/dashboard/settings/integrations/page.tsx
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { saveGoogleCredentials } from "./actions";
+
+export default function IntegrationsSettingsPage() {
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    await saveGoogleCredentials(clientId, clientSecret);
+    setSaved(true);
+  }
+
+  return (
+    <div className="flex max-w-md flex-col gap-4">
+      <h1 className="text-lg font-semibold">Google OAuth</h1>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="google-client-id">Client ID</Label>
+        <Input id="google-client-id" value={clientId} onChange={(event) => setClientId(event.target.value)} />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="google-client-secret">Client Secret</Label>
+        <Input
+          id="google-client-secret"
+          type="password"
+          value={clientSecret}
+          onChange={(event) => setClientSecret(event.target.value)}
+        />
+      </div>
+      <Button onClick={handleSave}>Save</Button>
+      {saved ? (
+        <p className="text-sm text-muted-foreground">
+          Saved. Restart the server for the new credentials to take effect.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+```
+
 - [ ] **Step 9: Commit (Tasks 2 and 3 together)**
 
 ```bash
-git add drizzle.config.ts lib/db lib/auth app/api/auth drizzle package.json pnpm-lock.yaml
+git add drizzle.config.ts lib/db lib/auth lib/secrets app/api/auth app/dashboard/settings/integrations drizzle package.json pnpm-lock.yaml
 git commit -m "Add Drizzle domain schema and Better Auth with role support"
 ```
 
@@ -966,6 +1176,7 @@ const adminOnlyLinks = [
   { href: "/dashboard/knowledge-base", label: "Knowledge Base" },
   { href: "/dashboard/analytics", label: "Analytics" },
   { href: "/dashboard/settings/prompts", label: "Prompt Settings" },
+  { href: "/dashboard/settings/integrations", label: "Integrations" },
 ];
 
 export function Nav({ role }: { role: "agent" | "admin" }) {
@@ -1349,3 +1560,4 @@ git commit -m "Add admin-only prompt template versioning and settings page"
 - Admin-editable prompt templates (versioned): Task 8.
 - Testing stack (Vitest + Playwright) used throughout: Tasks 1–8.
 - Mailbox connection table exists (Task 2); its OAuth flow and UI are explicitly out of scope per the spec and are not built here.
+- Encrypted OAuth app credential storage (`app_secrets`, AES-256-GCM, `APP_ENCRYPTION_KEY`): Task 2 (schema) and Task 3 (crypto/store helpers + admin Integrations settings page).
