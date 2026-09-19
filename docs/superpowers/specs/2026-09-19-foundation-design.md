@@ -212,7 +212,8 @@ module load, a credential change made through the admin settings page
 takes effect on the next server restart, not live — this is an accepted
 tradeoff for Foundation; the alternative (a fully dynamic auth config)
 adds complexity this phase doesn't need. Microsoft Graph credentials are
-stored the same way and read by the Ticket Ingestion phase.
+stored the same way, but entered starting in the Ticket Ingestion phase
+(see Scaffolding below) — nothing in Foundation reads them yet.
 
 ## Scaffolding
 
@@ -232,7 +233,11 @@ stored the same way and read by the Ticket Ingestion phase.
   credentials are entered once through an admin settings page and stored
   encrypted in `app_secrets`, not in `.env`.
 - `app/dashboard/settings/integrations/page.tsx`: admin-only form to set
-  Google and Microsoft Graph OAuth credentials.
+  Google OAuth credentials. Google is needed now, for agent login.
+  Microsoft Graph credential entry is added when the Ticket Ingestion
+  phase builds the mailbox-connection OAuth flow that actually consumes
+  those credentials — building UI for credentials nothing yet reads would
+  be premature.
 - Vitest config (`vitest.config.mts`) and Playwright config, with test
   scripts in `package.json`.
 
