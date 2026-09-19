@@ -6,13 +6,13 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 
 import { auth } from "@/lib/auth/server";
-import { middleware } from "./middleware";
+import { proxy } from "./proxy";
 
-describe("dashboard middleware", () => {
+describe("dashboard proxy", () => {
   it("redirects to /login when there is no session", async () => {
     vi.mocked(auth.api.getSession).mockResolvedValueOnce(null);
 
-    const response = await middleware(
+    const response = await proxy(
       new NextRequest("http://localhost:3000/dashboard")
     );
 
@@ -25,7 +25,7 @@ describe("dashboard middleware", () => {
       user: { id: "1", role: "agent" },
     } as never);
 
-    const response = await middleware(
+    const response = await proxy(
       new NextRequest("http://localhost:3000/dashboard")
     );
 
@@ -37,7 +37,7 @@ describe("dashboard middleware", () => {
       new Error("Auth service unavailable")
     );
 
-    const response = await middleware(
+    const response = await proxy(
       new NextRequest("http://localhost:3000/dashboard")
     );
 

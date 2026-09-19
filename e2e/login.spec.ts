@@ -1,11 +1,18 @@
 import { test, expect } from "@playwright/test";
-import { auth } from "@/lib/auth/server";
 
 const email = "e2e-agent@example.com";
 const password = "correct-horse-battery-staple";
 
-test.beforeAll(async () => {
-  await auth.api.signUpEmail({ body: { email, password, name: "E2E Agent" } }).catch(() => {
+test.beforeAll(async ({ baseURL }) => {
+  // Sign up over HTTP rather than importing lib/auth/server directly: that module
+  // reads OAuth secrets via a top-level await, which Playwright's own TypeScript
+  // transform can't execute in a file it loads directly (it isn't part of the app
+  // server bundle, so top-level await there is unsupported, unlike in Next.js itself).
+  await fetch(`${baseURL}/api/auth/sign-up/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: baseURL! },
+    body: JSON.stringify({ email, password, name: "E2E Agent" }),
+  }).catch(() => {
     // Already exists from a previous run — sign-in is what this test verifies anyway.
   });
 });
