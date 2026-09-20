@@ -111,4 +111,20 @@ describe("microsoft graph provider", () => {
 
     expect(buffer.toString("utf8")).toBe("file contents");
   });
+
+  it("encodes message and attachment ids in URLs", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ contentBytes: Buffer.from("test").toString("base64") }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await microsoftGraphProvider.downloadAttachment("access-token", "msg?123&test", {
+      id: "att#456?789",
+      filename: "file.txt",
+      contentType: "text/plain",
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent("msg?123&test"));
+    expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent("att#456?789"));
+  });
 });

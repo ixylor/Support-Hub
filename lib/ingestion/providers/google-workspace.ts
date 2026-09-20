@@ -119,7 +119,7 @@ function extractEmailAddress(fromHeader: string): string {
 }
 
 async function fetchFullMessage(accessToken: string, id: string): Promise<ProviderMessage> {
-  const response = await fetch(`${GMAIL_BASE}/messages/${id}?format=full`, {
+  const response = await fetch(`${GMAIL_BASE}/messages/${encodeURIComponent(id)}?format=full`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
@@ -180,7 +180,7 @@ async function downloadAttachment(
   attachment: AttachmentRef
 ): Promise<Buffer> {
   const response = await fetch(
-    `${GMAIL_BASE}/messages/${providerMessageId}/attachments/${attachment.id}`,
+    `${GMAIL_BASE}/messages/${encodeURIComponent(providerMessageId)}/attachments/${encodeURIComponent(attachment.id)}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!response.ok) {

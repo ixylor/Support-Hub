@@ -83,7 +83,7 @@ function stripHtml(html: string): string {
 
 async function listAttachments(accessToken: string, messageId: string): Promise<AttachmentRef[]> {
   const response = await fetch(
-    `${GRAPH_BASE}/me/messages/${messageId}/attachments?$select=id,name,contentType`,
+    `${GRAPH_BASE}/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!response.ok) {
@@ -137,7 +137,7 @@ async function downloadAttachment(
   attachment: AttachmentRef
 ): Promise<Buffer> {
   const response = await fetch(
-    `${GRAPH_BASE}/me/messages/${providerMessageId}/attachments/${attachment.id}`,
+    `${GRAPH_BASE}/me/messages/${encodeURIComponent(providerMessageId)}/attachments/${encodeURIComponent(attachment.id)}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!response.ok) {

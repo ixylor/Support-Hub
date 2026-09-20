@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 
 // Read lazily (not as a module-level const) so tests can stub the env var
 // per-test via vi.stubEnv + vi.resetModules.
@@ -12,9 +12,23 @@ export async function saveAttachment(
   filename: string,
   content: Buffer
 ): Promise<string> {
-  const dir = join(attachmentsDir(), ticketMessageId);
+  const dir = resolve(join(attachmentsDir(), ticketMessageId));
   await mkdir(dir, { recursive: true });
-  const storagePath = join(dir, filename);
+
+  // Sanitize filename: extract basename, reject empty or dot-only names.
+  let safe = basename(filename);
+  if (!safe || safe === "." || safe === "..") {
+    throw new Error(`Invalid attachment filename: ${filename}`);
+  }
+
+  const storagePath = resolve(join(dir, safe));
+
+  // Verify the resolved path is still inside the message directory (defense in depth).
+  const relativePath = relative(dir, storagePath);
+  if (relativePath.startsWith("..") || relativePath === "." || relativePath === "") {
+    throw new Error(`Attachment path traversal detected: ${filename}`);
+  }
+
   await writeFile(storagePath, content);
   return storagePath;
 }
