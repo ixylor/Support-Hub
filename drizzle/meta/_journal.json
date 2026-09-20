@@ -29,6 +29,13 @@
       "when": 1789827656113,
       "tag": "0003_modern_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789885671914,
+      "tag": "0004_amazing_lightspeed",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db/client";
-import { attachments } from "@/lib/db/schema";
+import { attachments, ticketMessages, tickets } from "@/lib/db/schema";
 import { attachmentsDir } from "@/lib/ingestion/attachment-storage";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,8 +45,28 @@ export async function GET(
     return notFound();
   }
 
-  // Look the file up by id — never trust a client-supplied path.
-  const [attachment] = await db.select().from(attachments).where(eq(attachments.id, attachmentId));
+  // Look the file up by id — never trust a client-supplied path. The joins
+  // carry the parent ticket along so visibility is decided in the same
+  // query, before any bytes are read off disk.
+  const viewer = session.user as { id: string; role: string };
+  const [attachment] = await db
+    .select({
+      filename: attachments.filename,
+      storagePath: attachments.storagePath,
+      contentType: attachments.contentType,
+      assignedToUserId: tickets.assignedToUserId,
+    })
+    .from(attachments)
+    .innerJoin(ticketMessages, eq(ticketMessages.id, attachments.ticketMessageId))
+    .innerJoin(tickets, eq(tickets.id, ticketMessages.ticketId))
+    .where(
+      // Same rule as lib/tickets/queries.ts: admins reach every ticket,
+      // agents only the ones assigned to them. Without this an agent could
+      // pull attachments off a ticket they cannot open.
+      viewer.role === "admin"
+        ? eq(attachments.id, attachmentId)
+        : and(eq(attachments.id, attachmentId), eq(tickets.assignedToUserId, viewer.id))
+    );
   if (!attachment) {
     return notFound();
   }

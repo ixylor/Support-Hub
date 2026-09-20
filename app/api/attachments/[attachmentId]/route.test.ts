@@ -19,6 +19,9 @@ function params(attachmentId: string) {
 
 describe("GET /api/attachments/[attachmentId]", () => {
   let userId: string;
+  let adminId: string;
+  let agentId: string;
+  let strangerId: string;
   let connectionId: string;
   let ticketId: string;
   let messageId: string;
@@ -33,6 +36,39 @@ describe("GET /api/attachments/[attachmentId]", () => {
       })
       .returning({ id: user.id });
     userId = seedUser.id;
+
+    // The route now answers differently per role, so the suite needs a real
+    // admin, the agent the ticket is assigned to, and an agent who is not.
+    const [seedAdmin] = await db
+      .insert(user)
+      .values({
+        id: `attachment-route-admin-${crypto.randomUUID()}`,
+        name: "Admin",
+        email: `attachment-route-admin-${crypto.randomUUID()}@example.com`,
+        role: "admin",
+      })
+      .returning({ id: user.id });
+    adminId = seedAdmin.id;
+
+    const [seedAgent] = await db
+      .insert(user)
+      .values({
+        id: `attachment-route-agent-${crypto.randomUUID()}`,
+        name: "Assigned Agent",
+        email: `attachment-route-agent-${crypto.randomUUID()}@example.com`,
+      })
+      .returning({ id: user.id });
+    agentId = seedAgent.id;
+
+    const [seedStranger] = await db
+      .insert(user)
+      .values({
+        id: `attachment-route-stranger-${crypto.randomUUID()}`,
+        name: "Other Agent",
+        email: `attachment-route-stranger-${crypto.randomUUID()}@example.com`,
+      })
+      .returning({ id: user.id });
+    strangerId = seedStranger.id;
 
     const [connection] = await db
       .insert(mailboxConnections)
@@ -54,6 +90,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
         status: "new",
         mailboxConnectionId: connectionId,
         providerThreadId: `thread-${crypto.randomUUID()}`,
+        assignedToUserId: seedAgent.id,
       })
       .returning({ id: tickets.id });
     ticketId = ticket.id;
@@ -81,6 +118,9 @@ describe("GET /api/attachments/[attachmentId]", () => {
     await db.delete(tickets).where(eq(tickets.id, ticketId));
     await db.delete(mailboxConnections).where(eq(mailboxConnections.id, connectionId));
     await db.delete(user).where(eq(user.id, userId));
+    await db.delete(user).where(eq(user.id, adminId));
+    await db.delete(user).where(eq(user.id, agentId));
+    await db.delete(user).where(eq(user.id, strangerId));
   });
 
   afterEach(async () => {
@@ -105,7 +145,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("returns 404 for an attachment id that does not exist", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/attachments/x"), params(crypto.randomUUID()));
@@ -115,7 +155,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("returns 404 for a malformed attachment id instead of erroring", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/attachments/x"), params("not-a-uuid"));
@@ -125,7 +165,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("serves an inline-safe image with an inline disposition and nosniff", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const dir = resolve(TEST_DIR, messageId);
     await mkdir(dir, { recursive: true });
@@ -154,7 +194,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("forces a download disposition for HTML even though it might look 'viewable'", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const dir = resolve(TEST_DIR, messageId);
     await mkdir(dir, { recursive: true });
@@ -182,7 +222,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("forces a download disposition for SVG (inline SVG can carry script)", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const dir = resolve(TEST_DIR, messageId);
     await mkdir(dir, { recursive: true });
@@ -209,7 +249,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("returns 404 (not the file) when storagePath has been tampered with to point outside the attachments dir", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const outsideDir = resolve("./storage/outside-attachments-test");
     await mkdir(outsideDir, { recursive: true });
@@ -239,7 +279,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
 
   it("returns a clean 404 when the row exists but the file is missing on disk", async () => {
     const { auth } = await import("@/lib/auth/server");
-    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: "u1" } } as never);
+    vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
     const dir = resolve(TEST_DIR, messageId);
     await mkdir(dir, { recursive: true });
@@ -261,5 +301,83 @@ describe("GET /api/attachments/[attachmentId]", () => {
     const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachment.id));
 
     expect(response.status).toBe(404);
+  });
+
+  describe("ticket visibility", () => {
+    async function seedAttachment() {
+      const dir = resolve(TEST_DIR, messageId);
+      await mkdir(dir, { recursive: true });
+      const filePath = resolve(dir, "private.txt");
+      await writeFile(filePath, Buffer.from("secret-bytes"));
+
+      const [attachment] = await db
+        .insert(attachments)
+        .values({
+          ticketMessageId: messageId,
+          filename: "private.txt",
+          storagePath: filePath,
+          contentType: "text/plain",
+          sizeBytes: 12,
+        })
+        .returning({ id: attachments.id });
+      return attachment.id;
+    }
+
+    it("serves the file to the agent the parent ticket is assigned to", async () => {
+      const attachmentId = await seedAttachment();
+      const { auth } = await import("@/lib/auth/server");
+      vi.mocked(auth.api.getSession).mockResolvedValue({
+        user: { id: agentId, role: "agent" },
+      } as never);
+
+      const { GET } = await import("./route");
+      const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachmentId));
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("secret-bytes");
+    });
+
+    it("404s for an agent the parent ticket is not assigned to, without leaking bytes", async () => {
+      const attachmentId = await seedAttachment();
+      const { auth } = await import("@/lib/auth/server");
+      vi.mocked(auth.api.getSession).mockResolvedValue({
+        user: { id: strangerId, role: "agent" },
+      } as never);
+
+      const { GET } = await import("./route");
+      const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachmentId));
+
+      expect(response.status).toBe(404);
+      expect(await response.text()).not.toContain("secret-bytes");
+    });
+
+    it("404s for an agent when the parent ticket is unassigned", async () => {
+      const attachmentId = await seedAttachment();
+      await db.update(tickets).set({ assignedToUserId: null }).where(eq(tickets.id, ticketId));
+      const { auth } = await import("@/lib/auth/server");
+      vi.mocked(auth.api.getSession).mockResolvedValue({
+        user: { id: agentId, role: "agent" },
+      } as never);
+
+      const { GET } = await import("./route");
+      const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachmentId));
+
+      expect(response.status).toBe(404);
+
+      await db.update(tickets).set({ assignedToUserId: agentId }).where(eq(tickets.id, ticketId));
+    });
+
+    it("serves the file to an admin regardless of who the ticket is assigned to", async () => {
+      const attachmentId = await seedAttachment();
+      const { auth } = await import("@/lib/auth/server");
+      vi.mocked(auth.api.getSession).mockResolvedValue({
+        user: { id: adminId, role: "admin" },
+      } as never);
+
+      const { GET } = await import("./route");
+      const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachmentId));
+
+      expect(response.status).toBe(200);
+    });
   });
 });

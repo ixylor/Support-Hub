@@ -2,28 +2,21 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
-import { getTicketWithMessages, type TicketWithMessages } from "@/lib/tickets/queries";
-import { Badge, type badgeVariants } from "@/components/ui/badge";
-import type { VariantProps } from "class-variance-authority";
+import {
+  getTicketWithMessages,
+  listTicketAssignments,
+  type TicketViewer,
+} from "@/lib/tickets/queries";
+import {
+  PRIORITY_LABELS,
+  PRIORITY_VARIANTS,
+  STATUS_LABELS,
+  STATUS_VARIANTS,
+} from "@/lib/tickets/labels";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageList } from "./message-list";
-
-const STATUS_VARIANTS: Record<TicketWithMessages["status"], VariantProps<typeof badgeVariants>["variant"]> = {
-  new: "default",
-  pending_review: "secondary",
-  approved: "secondary",
-  escalated: "destructive",
-  resolved: "outline",
-  waiting_on_customer: "secondary",
-};
-
-const STATUS_LABELS: Record<TicketWithMessages["status"], string> = {
-  new: "New",
-  pending_review: "Pending Review",
-  approved: "Approved",
-  escalated: "Escalated",
-  resolved: "Resolved",
-  waiting_on_customer: "Waiting on Customer",
-};
+import { AssignDialog } from "./assign-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -42,15 +35,25 @@ export default async function TicketThreadPage({
     redirect("/login");
   }
 
+  const viewer: TicketViewer = {
+    id: session.user.id,
+    role: (session.user as { role: "agent" | "admin" }).role,
+  };
+  const isAdmin = viewer.role === "admin";
+
   const { ticketId } = await params;
   if (!UUID_PATTERN.test(ticketId)) {
     notFound();
   }
 
-  const ticket = await getTicketWithMessages(ticketId);
+  // Scoped to the viewer, so an agent who guesses another agent's ticket id
+  // gets the same 404 as one that does not exist.
+  const ticket = await getTicketWithMessages(ticketId, viewer);
   if (!ticket) {
     notFound();
   }
+
+  const history = await listTicketAssignments(ticket.id);
 
   return (
     <div className="max-w-3xl">
@@ -65,6 +68,78 @@ export default async function TicketThreadPage({
         </div>
         <Badge variant={STATUS_VARIANTS[ticket.status]}>{STATUS_LABELS[ticket.status]}</Badge>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+          <CardTitle className="text-sm font-medium">Assignment</CardTitle>
+          {isAdmin ? (
+            <AssignDialog
+              ticketId={ticket.id}
+              currentAssignee={ticket.assignee}
+              currentPriority={ticket.priority}
+              currentUserId={viewer.id}
+            />
+          ) : null}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+            <div>
+              <span className="text-muted-foreground">Assigned to </span>
+              {ticket.assignee ? (
+                <span className="font-medium">{ticket.assignee.name}</span>
+              ) : (
+                <span className="text-muted-foreground">nobody yet</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Priority</span>
+              {ticket.priority ? (
+                <Badge variant={PRIORITY_VARIANTS[ticket.priority]}>
+                  {PRIORITY_LABELS[ticket.priority]}
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground">none set</span>
+              )}
+            </div>
+          </div>
+
+          {history.length > 0 ? (
+            <div className="flex flex-col gap-3 border-t pt-4">
+              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                History
+              </h2>
+              <ol className="flex flex-col gap-3">
+                {history.map((entry) => (
+                  <li key={entry.id} className="text-sm">
+                    <p>
+                      <span className="font-medium">{entry.assignedBy.name}</span>{" "}
+                      {entry.assignee ? (
+                        <>
+                          assigned this to{" "}
+                          <span className="font-medium">
+                            {entry.assignee.id === entry.assignedBy.id
+                              ? "themselves"
+                              : entry.assignee.name}
+                          </span>
+                        </>
+                      ) : (
+                        "unassigned this ticket"
+                      )}
+                      {entry.priority ? ` at ${PRIORITY_LABELS[entry.priority]} priority` : null}
+                    </p>
+                    {entry.remark ? (
+                      <p className="mt-1 border-l-2 pl-3 text-muted-foreground">{entry.remark}</p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {dateFormatter.format(entry.createdAt)}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <MessageList
         messages={ticket.messages.map((message) => ({

@@ -8,6 +8,7 @@ import {
   integer,
   boolean,
   vector,
+  index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -86,6 +87,9 @@ export const tickets = pgTable(
       .notNull()
       .references(() => mailboxConnections.id),
     providerThreadId: text("provider_thread_id").notNull(),
+    // Null means unassigned. Agents only ever see tickets pointing at them;
+    // admins see every ticket regardless. See lib/tickets/queries.ts.
+    assignedToUserId: text("assigned_to_user_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -94,7 +98,34 @@ export const tickets = pgTable(
   },
   (table) => [
     uniqueIndex("tickets_one_per_thread").on(table.mailboxConnectionId, table.providerThreadId),
+    // Every agent-facing query filters on this column, so it carries the
+    // whole non-admin ticket list.
+    index("tickets_assigned_to_user_id_idx").on(table.assignedToUserId),
   ]
+);
+
+// Append-only audit of every assign, reassign and unassign. Nothing here is
+// ever updated or deleted — the current assignee lives on tickets; this is
+// the history behind it.
+export const ticketAssignments = pgTable(
+  "ticket_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => tickets.id),
+    // Null records an unassignment.
+    assignedToUserId: text("assigned_to_user_id").references(() => user.id),
+    assignedByUserId: text("assigned_by_user_id")
+      .notNull()
+      .references(() => user.id),
+    // The priority chosen at assignment time, if the admin set one. Kept
+    // separate from tickets.priority so later changes do not rewrite history.
+    priority: ticketPriorityEnum("priority"),
+    remark: text("remark"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("ticket_assignments_ticket_id_idx").on(table.ticketId)]
 );
 
 export const messageDirectionEnum = pgEnum("message_direction", [
