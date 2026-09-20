@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { mailboxConnections } from "@/lib/db/schema";
+import { attachments, mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
 import { auth } from "@/lib/auth/server";
 import {
   connectMailbox,
@@ -23,6 +23,9 @@ describe("mailbox connection store", () => {
   });
 
   afterEach(async () => {
+    await db.delete(attachments);
+    await db.delete(ticketMessages);
+    await db.delete(tickets);
     await db.delete(mailboxConnections);
   });
 
