@@ -1,0 +1,43 @@
+import { headers } from "next/headers";
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth/server";
+import { getSecret } from "@/lib/secrets/store";
+import { getMailProvider } from "@/lib/ingestion/providers";
+import type { MailboxProvider } from "@/lib/mailbox/connection";
+import { clientIdSecretKey, MAILBOX_OAUTH_PROVIDERS } from "@/lib/mailbox/oauth-credentials";
+
+export async function GET(request: Request) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session || (session.user as { role: string }).role !== "admin") {
+    return NextResponse.json({ error: "Only admins can connect a mailbox." }, { status: 403 });
+  }
+
+  const url = new URL(request.url);
+  const requestedProvider = url.searchParams.get("provider");
+  if (!requestedProvider || !MAILBOX_OAUTH_PROVIDERS.includes(requestedProvider as MailboxProvider)) {
+    return NextResponse.json(
+      { error: `provider must be one of: ${MAILBOX_OAUTH_PROVIDERS.join(", ")}` },
+      { status: 400 }
+    );
+  }
+  const provider = requestedProvider as MailboxProvider;
+
+  const clientId = await getSecret(clientIdSecretKey(provider));
+  if (!clientId) {
+    return NextResponse.json({ error: `No OAuth client ID configured for ${provider}.` }, { status: 400 });
+  }
+
+  const state = crypto.randomUUID();
+  const redirectUri = `${url.origin}/api/integrations/mailbox/callback`;
+  const authorizationUrl = getMailProvider(provider).getAuthorizationUrl(clientId, redirectUri, state);
+
+  const response = NextResponse.redirect(authorizationUrl);
+  response.cookies.set("mailbox_oauth_state", `${provider}:${state}`, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  });
+  return response;
+}
