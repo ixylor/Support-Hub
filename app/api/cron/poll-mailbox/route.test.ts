@@ -201,6 +201,13 @@ describe("POST /api/cron/poll-mailbox", () => {
     await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
     await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
 
+    // connectMailbox stamps the cursor with the connection time, so "did not
+    // advance" means unchanged from that stamp -- not null.
+    const [beforePoll] = await db
+      .select()
+      .from(mailboxConnections)
+      .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
+
     const { POST } = await import("./route");
     const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
       method: "POST",
@@ -217,7 +224,7 @@ describe("POST /api/cron/poll-mailbox", () => {
       .select()
       .from(mailboxConnections)
       .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
-    expect(connection.syncCursor).toBeNull();
+    expect(connection.syncCursor).toBe(beforePoll.syncCursor);
   });
 
   it("advances the sync cursor to the last consecutive success when a mid-batch message fails", async () => {
