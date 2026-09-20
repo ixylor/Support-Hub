@@ -2,8 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 
 // Read lazily (not as a module-level const) so tests can stub the env var
-// per-test via vi.stubEnv + vi.resetModules.
-function attachmentsDir(): string {
+// per-test via vi.stubEnv + vi.resetModules. Exported so callers that read
+// attachments back (see app/api/attachments/[attachmentId]/route.ts) can
+// re-derive and re-validate the same base directory instead of trusting a
+// stored path.
+export function attachmentsDir(): string {
   return process.env.ATTACHMENTS_DIR ?? "./storage/attachments";
 }
 
