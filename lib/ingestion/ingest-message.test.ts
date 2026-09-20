@@ -263,4 +263,39 @@ describe("ingestMessage", () => {
     expect(attachment.filename).toBe("log.txt");
     expect(attachment.sizeBytes).toBe(Buffer.from("attachment content").byteLength);
   });
+
+  it("attaches a message to an existing ticket when created by a concurrent insert", async () => {
+    const threadId = crypto.randomUUID();
+
+    // Simulate a concurrent poll cycle that created the ticket before this
+    // cycle's insert reaches the database: create the ticket manually.
+    const [concurrentTicket] = await db
+      .insert(tickets)
+      .values({
+        subject: "Concurrent creation",
+        requesterEmail: "customer@example.com",
+        status: "new",
+        mailboxConnectionId: connectionId,
+        providerThreadId: threadId,
+      })
+      .returning({ id: tickets.id });
+
+    // Now call ingestMessage with a message on the same thread. Because the
+    // ticket already exists, the pre-check finds it and uses it directly.
+    const message = buildMessage({ providerThreadId: threadId });
+    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+
+    // Assert that only one ticket exists for this thread and the message is
+    // attached to the ticket created by the concurrent cycle.
+    const ticketRows = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
+    expect(ticketRows).toHaveLength(1);
+    expect(ticketRows[0].id).toBe(concurrentTicket.id);
+
+    const messageRows = await db
+      .select()
+      .from(ticketMessages)
+      .where(eq(ticketMessages.ticketId, concurrentTicket.id));
+    expect(messageRows).toHaveLength(1);
+    expect(messageRows[0].providerMessageId).toBe(message.providerMessageId);
+  });
 });

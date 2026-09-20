@@ -66,6 +66,11 @@ export async function ingestMessage(
           )
         )
         .limit(1);
+      if (!winner) {
+        throw new Error(
+          `Ticket vanished between insert conflict and re-read: mailboxConnectionId=${mailboxConnectionId}, providerThreadId=${message.providerThreadId}`
+        );
+      }
       ticketId = winner.id;
     }
   }
