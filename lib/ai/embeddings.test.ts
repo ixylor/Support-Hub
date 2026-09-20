@@ -22,6 +22,21 @@ function embeddingResponse(count: number, startSeed = 0): Response {
   );
 }
 
+// Same shape as embeddingResponse, but the `data` array is emitted in
+// reverse index order — the array position tells you nothing about which
+// input each entry belongs to, only the `index` field does.
+function scrambledEmbeddingResponse(count: number, startSeed = 0): Response {
+  const entries = Array.from({ length: count }, (_, i) => ({
+    index: i,
+    embedding: vectorOf(startSeed + i),
+  })).reverse();
+
+  return new Response(JSON.stringify({ data: entries }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("embedTexts", () => {
   let adminId: string;
 
@@ -105,13 +120,18 @@ describe("embedTexts", () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(embeddingResponse(EMBEDDING_BATCH_SIZE, 0))
-      .mockResolvedValueOnce(embeddingResponse(5, EMBEDDING_BATCH_SIZE));
+      .mockResolvedValueOnce(scrambledEmbeddingResponse(5, EMBEDDING_BATCH_SIZE));
 
     const result = await embedTexts(Array.from({ length: total }, (_, i) => `text ${i}`));
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(result.embeddings).toHaveLength(total);
     expect(result.embeddings[0][0]).toBe(0);
+    // Interior elements of the scrambled second batch: if reassembly trusted
+    // array position instead of the `index` field, these would come out
+    // reversed within the batch.
+    expect(result.embeddings[EMBEDDING_BATCH_SIZE + 1][0]).toBe(EMBEDDING_BATCH_SIZE + 1);
+    expect(result.embeddings[EMBEDDING_BATCH_SIZE + 2][0]).toBe(EMBEDDING_BATCH_SIZE + 2);
     expect(result.embeddings[total - 1][0]).toBe(total - 1);
   });
 
