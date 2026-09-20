@@ -34,7 +34,12 @@ export async function GET(request: Request) {
   const response = NextResponse.redirect(authorizationUrl);
   response.cookies.set("mailbox_oauth_state", `${provider}:${state}`, {
     httpOnly: true,
-    secure: true,
+    // Only literal "localhost" gets browsers' special-cased trustworthy-origin
+    // treatment for a `secure` cookie over plain HTTP. Hardcoding `true` here
+    // silently drops the cookie on 127.0.0.1, a LAN IP, or a .local dev
+    // domain, producing a confusing "OAuth state mismatch" at the callback.
+    // Base it on whether this request actually arrived over HTTPS instead.
+    secure: url.protocol === "https:" || process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 600,
     path: "/",

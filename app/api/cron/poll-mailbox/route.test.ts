@@ -150,7 +150,7 @@ describe("POST /api/cron/poll-mailbox", () => {
     expect(connection.syncCursor).toBe("2026-09-19T10:00:00Z");
   });
 
-  it("does not advance the sync cursor when a message fails to ingest", async () => {
+  it("does not advance the sync cursor when the first message fails to ingest", async () => {
     const { getMailProvider } = await import("@/lib/ingestion/providers");
     const { ingestMessage } = await import("@/lib/ingestion/ingest-message");
     const msgId1 = crypto.randomUUID();
@@ -187,6 +187,86 @@ describe("POST /api/cron/poll-mailbox", () => {
     });
 
     vi.mocked(ingestMessage).mockImplementation(async (connectionId, message) => {
+      if (message.providerMessageId === msgId1) {
+        throw new Error("Message ingestion failed");
+      }
+    });
+
+    await connectMailbox({
+      provider: "microsoft",
+      mailboxAddress: "support@example.com",
+      refreshToken: "rt",
+      connectedByUserId: userId,
+    });
+    await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
+    await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
+
+    const { POST } = await import("./route");
+    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
+      method: "POST",
+      headers: { "x-cron-secret": "test-secret" },
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    // First message fails, second succeeds -- but there's no consecutive
+    // run of successes starting at index 0, so the cursor can't move.
+    expect(body.ingested).toBe(1);
+    const [connection] = await db
+      .select()
+      .from(mailboxConnections)
+      .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
+    expect(connection.syncCursor).toBeNull();
+  });
+
+  it("advances the sync cursor to the last consecutive success when a mid-batch message fails", async () => {
+    const { getMailProvider } = await import("@/lib/ingestion/providers");
+    const { ingestMessage } = await import("@/lib/ingestion/ingest-message");
+    const msgId1 = crypto.randomUUID();
+    const msgId2 = crypto.randomUUID();
+    const msgId3 = crypto.randomUUID();
+
+    vi.mocked(getMailProvider).mockReturnValue({
+      getAuthorizationUrl: vi.fn(),
+      exchangeCodeForTokens: vi.fn(),
+      refreshAccessToken: vi.fn(async () => "access-token"),
+      getNewMessages: vi.fn(async () => ({
+        messages: [
+          {
+            providerMessageId: msgId1,
+            providerThreadId: "thread-1",
+            senderEmail: "customer@example.com",
+            subject: "Help",
+            bodyText: "body",
+            sentAt: new Date("2026-09-19T10:00:00Z"),
+            attachments: [],
+          },
+          {
+            providerMessageId: msgId2,
+            providerThreadId: "thread-2",
+            senderEmail: "customer2@example.com",
+            subject: "Help 2",
+            bodyText: "body 2",
+            sentAt: new Date("2026-09-19T11:00:00Z"),
+            attachments: [],
+          },
+          {
+            providerMessageId: msgId3,
+            providerThreadId: "thread-3",
+            senderEmail: "customer3@example.com",
+            subject: "Help 3",
+            bodyText: "body 3",
+            sentAt: new Date("2026-09-19T12:00:00Z"),
+            attachments: [],
+          },
+        ],
+        nextCursor: "2026-09-19T12:00:00Z",
+      })),
+      downloadAttachment: vi.fn(),
+    });
+
+    vi.mocked(ingestMessage).mockImplementation(async (connectionId, message) => {
       if (message.providerMessageId === msgId2) {
         throw new Error("Message ingestion failed");
       }
@@ -210,13 +290,14 @@ describe("POST /api/cron/poll-mailbox", () => {
     const response = await POST(request);
     const body = await response.json();
 
-    // First message succeeds, second fails
-    expect(body.ingested).toBe(1);
+    // Message 1 succeeds, message 2 fails, message 3 succeeds. The cursor
+    // should advance only to message 1's position, not to the batch end --
+    // message 2 is retried and message 3 re-fetched (and deduped) next cycle.
+    expect(body.ingested).toBe(2);
     const [connection] = await db
       .select()
       .from(mailboxConnections)
       .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
-    // Cursor should not be advanced because not all messages succeeded
-    expect(connection.syncCursor).toBeNull();
+    expect(connection.syncCursor).toBe("2026-09-19T10:00:00.000Z");
   });
 });

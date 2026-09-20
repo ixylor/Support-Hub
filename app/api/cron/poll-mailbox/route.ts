@@ -42,25 +42,38 @@ export async function POST(request: NextRequest) {
   const { messages, nextCursor } = await provider.getNewMessages(accessToken, connection.syncCursor);
 
   let ingested = 0;
-  let lastSuccessfulIndex = -1;
+  // The end of the run of consecutive successes starting at index 0. A
+  // failure anywhere stops the run from growing further, even if later
+  // messages succeed — those later successes get re-fetched and harmlessly
+  // deduped next cycle once the failing message is retried.
+  let consecutiveSuccessEnd = -1;
+  let runBroken = false;
 
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
     try {
       await ingestMessage(connection.id, message, provider, accessToken);
       ingested += 1;
-      lastSuccessfulIndex = i;
+      if (!runBroken) {
+        consecutiveSuccessEnd = i;
+      }
     } catch (error) {
+      runBroken = true;
       console.error(`Failed to ingest message ${message.providerMessageId}:`, error);
     }
   }
 
-  // Only advance cursor if we successfully ingested all messages in this batch.
-  // This ensures transient failures are retried on the next poll cycle rather
-  // than being silently skipped. ingestMessage is idempotent (dedupes on
-  // provider_message_id), so re-processing previously successful messages is safe.
-  if (lastSuccessfulIndex === messages.length - 1) {
+  // Advance the cursor past the longest run of consecutively-successful
+  // messages from the start of the batch, rather than requiring the whole
+  // batch to succeed. That way one permanently-failing message can't stall
+  // ingestion forever — it's retried next cycle while later messages that
+  // already succeeded are simply re-fetched and deduped. If the very first
+  // message in the batch fails, the cursor can't move at all; the error log
+  // above carries the provider message id so an operator can find it.
+  if (consecutiveSuccessEnd === messages.length - 1) {
     await updateSyncCursor(connection.id, nextCursor);
+  } else if (consecutiveSuccessEnd >= 0) {
+    await updateSyncCursor(connection.id, messages[consecutiveSuccessEnd].sentAt.toISOString());
   }
 
   return NextResponse.json({ ingested });
