@@ -244,6 +244,37 @@ describe("ingestMessage", () => {
     expect(retried).toHaveLength(1);
   });
 
+  it("leaves no ticket row when an attachment download fails partway through a new thread", async () => {
+    const failingProvider: MailProvider = {
+      ...fakeProvider,
+      downloadAttachment: vi
+        .fn()
+        .mockResolvedValueOnce(Buffer.from("first attachment"))
+        .mockRejectedValueOnce(new Error("network blip")),
+    };
+    const threadId = crypto.randomUUID();
+    const message = buildMessage({
+      providerThreadId: threadId,
+      attachments: [
+        { id: "att-1", filename: "first.txt", contentType: "text/plain" },
+        { id: "att-2", filename: "second.txt", contentType: "text/plain" },
+      ],
+    });
+
+    await expect(ingestMessage(connectionId, message, failingProvider, "access-token")).rejects.toThrow(
+      "network blip"
+    );
+
+    const ticketRows = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
+    expect(ticketRows).toHaveLength(0);
+
+    // Retrying with a working provider must create the ticket and message
+    // together, proving the failed attempt left no orphaned ticket behind.
+    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    const retriedTickets = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
+    expect(retriedTickets).toHaveLength(1);
+  });
+
   it("downloads and stores attachments against the inserted message", async () => {
     const message = buildMessage({
       attachments: [{ id: "att-1", filename: "log.txt", contentType: "text/plain" }],

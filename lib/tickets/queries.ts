@@ -44,13 +44,17 @@ export async function listTickets(): Promise<TicketListItem[]> {
       subject: tickets.subject,
       requesterEmail: tickets.requesterEmail,
       status: tickets.status,
-      lastMessageAt: sql<Date>`max(${ticketMessages.sentAt})`.mapWith((value: string) => new Date(value)),
+      // A ticket with no messages has no max(sentAt) to fall back on, so use
+      // its own createdAt instead of rendering a blank date in the UI.
+      lastMessageAt: sql<Date>`coalesce(max(${ticketMessages.sentAt}), ${tickets.createdAt})`.mapWith(
+        (value: string) => new Date(value)
+      ),
       messageCount: sql<number>`count(${ticketMessages.id})::int`,
     })
     .from(tickets)
-    .innerJoin(ticketMessages, eq(ticketMessages.ticketId, tickets.id))
-    .groupBy(tickets.id, tickets.subject, tickets.requesterEmail, tickets.status)
-    .orderBy(desc(sql`max(${ticketMessages.sentAt})`));
+    .leftJoin(ticketMessages, eq(ticketMessages.ticketId, tickets.id))
+    .groupBy(tickets.id, tickets.subject, tickets.requesterEmail, tickets.status, tickets.createdAt)
+    .orderBy(desc(sql`coalesce(max(${ticketMessages.sentAt}), ${tickets.createdAt})`));
 
   return rows;
 }

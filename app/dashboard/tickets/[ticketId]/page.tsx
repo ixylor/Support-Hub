@@ -30,6 +30,8 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   timeStyle: "short",
 });
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -47,6 +49,10 @@ export default async function TicketThreadPage({
   }
 
   const { ticketId } = await params;
+  if (!UUID_PATTERN.test(ticketId)) {
+    notFound();
+  }
+
   const ticket = await getTicketWithMessages(ticketId);
   if (!ticket) {
     notFound();

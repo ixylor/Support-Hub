@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { attachments, mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
@@ -41,6 +41,10 @@ describe("tickets queries", () => {
       await db.delete(ticketMessages).where(eq(ticketMessages.ticketId, ticket.id));
     }
     await db.delete(tickets).where(eq(tickets.mailboxConnectionId, connectionId));
+  });
+
+  afterAll(async () => {
+    await db.delete(mailboxConnections).where(eq(mailboxConnections.id, connectionId));
   });
 
   it("returns [] when no tickets exist", async () => {
@@ -115,6 +119,25 @@ describe("tickets queries", () => {
       messageCount: 2,
     });
     expect(result[1].lastMessageAt.toISOString()).toBe("2026-09-02T10:00:00.000Z");
+  });
+
+  it("includes a ticket with no messages, with a message count of 0 and createdAt as its last activity", async () => {
+    const [empty] = await db
+      .insert(tickets)
+      .values({
+        subject: "No messages yet",
+        requesterEmail: "orphan@example.com",
+        status: "new",
+        mailboxConnectionId: connectionId,
+        providerThreadId: crypto.randomUUID(),
+      })
+      .returning({ id: tickets.id, createdAt: tickets.createdAt });
+
+    const result = await listTickets();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ id: empty.id, messageCount: 0 });
+    expect(result[0].lastMessageAt.toISOString()).toBe(empty.createdAt.toISOString());
   });
 
   it("returns the ticket plus its messages oldest-first, each with attachments", async () => {
