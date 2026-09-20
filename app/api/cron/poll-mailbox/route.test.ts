@@ -300,4 +300,45 @@ describe("POST /api/cron/poll-mailbox", () => {
       .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
     expect(connection.syncCursor).toBe("2026-09-19T10:00:00.000Z");
   });
+
+  it("marks the connection as errored when message fetch fails", async () => {
+    const { getMailProvider } = await import("@/lib/ingestion/providers");
+    vi.mocked(getMailProvider).mockReturnValue({
+      getAuthorizationUrl: vi.fn(),
+      exchangeCodeForTokens: vi.fn(),
+      refreshAccessToken: vi.fn(async () => "access-token"),
+      getNewMessages: vi.fn(async () => {
+        throw new Error("Network error");
+      }),
+      downloadAttachment: vi.fn(),
+    });
+
+    await connectMailbox({
+      provider: "microsoft",
+      mailboxAddress: "support@example.com",
+      refreshToken: "rt",
+      connectedByUserId: userId,
+    });
+    await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
+    await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
+
+    const { POST } = await import("./route");
+    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
+      method: "POST",
+      headers: { "x-cron-secret": "test-secret" },
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ingested).toBe(0);
+    expect(body.reason).toBe("message fetch failed");
+
+    const [connection] = await db
+      .select()
+      .from(mailboxConnections)
+      .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
+    expect(connection.status).toBe("error");
+  });
 });

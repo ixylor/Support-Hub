@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import {
   getActiveMailboxConnection,
   getDecryptedRefreshToken,
@@ -9,10 +10,21 @@ import { getSecret } from "@/lib/secrets/store";
 import { getMailProvider } from "@/lib/ingestion/providers";
 import { ingestMessage } from "@/lib/ingestion/ingest-message";
 import { clientIdSecretKey, clientSecretSecretKey } from "@/lib/mailbox/oauth-credentials";
+import type { ProviderMessage } from "@/lib/ingestion/provider";
 
 export async function POST(request: NextRequest) {
   const providedSecret = request.headers.get("x-cron-secret");
-  if (!process.env.CRON_SECRET || providedSecret !== process.env.CRON_SECRET) {
+  const expectedSecret = process.env.CRON_SECRET;
+
+  if (!expectedSecret) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!providedSecret || providedSecret.length !== expectedSecret.length) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (!timingSafeEqual(Buffer.from(providedSecret), Buffer.from(expectedSecret))) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -29,17 +41,35 @@ export async function POST(request: NextRequest) {
   }
 
   const provider = getMailProvider(connection.provider);
-  const refreshToken = await getDecryptedRefreshToken(connection.id);
+  let refreshToken: string;
+  try {
+    refreshToken = await getDecryptedRefreshToken(connection.id);
+  } catch (error) {
+    await setMailboxConnectionStatus(connection.id, "error");
+    console.error(`Failed to decrypt refresh token for connection ${connection.id}:`, error);
+    return NextResponse.json({ ingested: 0, reason: "refresh token retrieval failed" });
+  }
 
   let accessToken: string;
   try {
     accessToken = await provider.refreshAccessToken(clientId, clientSecret, refreshToken);
-  } catch {
+  } catch (error) {
     await setMailboxConnectionStatus(connection.id, "error");
+    console.error(`Failed to refresh access token for connection ${connection.id}:`, error);
     return NextResponse.json({ ingested: 0, reason: "token refresh failed" });
   }
 
-  const { messages, nextCursor } = await provider.getNewMessages(accessToken, connection.syncCursor);
+  let messages: ProviderMessage[];
+  let nextCursor: string;
+  try {
+    const result = await provider.getNewMessages(accessToken, connection.syncCursor);
+    messages = result.messages;
+    nextCursor = result.nextCursor;
+  } catch (error) {
+    await setMailboxConnectionStatus(connection.id, "error");
+    console.error(`Failed to fetch messages for connection ${connection.id}:`, error);
+    return NextResponse.json({ ingested: 0, reason: "message fetch failed" });
+  }
 
   let ingested = 0;
   // The end of the run of consecutive successes starting at index 0. A
