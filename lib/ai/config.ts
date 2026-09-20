@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiDeployments } from "@/lib/db/schema";
-import { getSecret, setSecret } from "@/lib/secrets/store";
+import { getSecret, setSecret, SecretDecryptionError } from "@/lib/secrets/store";
 
 export type DeploymentRole = "chat" | "embedding" | "extraction";
 
@@ -46,8 +46,13 @@ export async function getAzureCredentials(): Promise<AzureCredentials | null> {
     }
 
     return { endpoint: endpoint.replace(/\/+$/, ""), apiKey, apiVersion };
-  } catch {
-    return null;
+  } catch (error) {
+    // Return null only for undecryptable stored secrets. Other errors
+    // (database failures, wrong encryption key) should propagate.
+    if (error instanceof SecretDecryptionError) {
+      return null;
+    }
+    throw error;
   }
 }
 

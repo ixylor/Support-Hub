@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiDeployments, appSecrets } from "@/lib/db/schema";
@@ -11,6 +11,7 @@ import {
   listDeployments,
   setAzureCredentials,
 } from "./config";
+import { SecretDecryptionError } from "@/lib/secrets/store";
 
 describe("AI provider configuration", () => {
   let adminId: string;
@@ -144,5 +145,45 @@ describe("AI provider configuration", () => {
     await deactivateDeployment(row.id);
 
     expect(await getActiveDeployment("chat")).toBeNull();
+  });
+
+  it("returns null when a stored secret is undecryptable", async () => {
+    // Insert a secret with an invalid encrypted value (not in iv:authTag:data format).
+    // This will cause decryption to fail with SecretDecryptionError, which should
+    // be caught and treated as "not configured".
+    await db.insert(appSecrets).values({
+      key: "azure_openai_endpoint",
+      encryptedValue: "invalid-format-no-colons",
+      updatedByUserId: adminId,
+    });
+    await db.insert(appSecrets).values({
+      key: "azure_openai_key",
+      encryptedValue: "invalid-format-no-colons",
+      updatedByUserId: adminId,
+    });
+    await db.insert(appSecrets).values({
+      key: "azure_openai_api_version",
+      encryptedValue: "invalid-format-no-colons",
+      updatedByUserId: adminId,
+    });
+
+    expect(await getAzureCredentials()).toBeNull();
+  });
+
+  it("propagates non-decryption errors (regression guard for database failures)", async () => {
+    // This test verifies that database errors and other non-decryption failures
+    // propagate rather than being silently swallowed as "not configured".
+    // We test this by mocking the secrets store module to throw a non-SecretDecryptionError.
+    const dbError = new Error("Database connection lost");
+
+    // Import and spy on the store module
+    const store = await import("@/lib/secrets/store");
+    vi.spyOn(store, "getSecret").mockRejectedValueOnce(dbError);
+
+    // Verify that the database error propagates (is not caught and converted to null)
+    await expect(getAzureCredentials()).rejects.toBe(dbError);
+
+    // Clean up the spy
+    vi.restoreAllMocks();
   });
 });

@@ -3,6 +3,13 @@ import { db } from "@/lib/db/client";
 import { appSecrets } from "@/lib/db/schema";
 import { decryptSecret, encryptSecret } from "./crypto";
 
+export class SecretDecryptionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SecretDecryptionError";
+  }
+}
+
 export async function getSecret(key: string): Promise<string | null> {
   const [row] = await db
     .select({ encryptedValue: appSecrets.encryptedValue })
@@ -10,7 +17,17 @@ export async function getSecret(key: string): Promise<string | null> {
     .where(eq(appSecrets.key, key))
     .limit(1);
 
-  return row ? decryptSecret(row.encryptedValue) : null;
+  if (!row) {
+    return null;
+  }
+
+  try {
+    return decryptSecret(row.encryptedValue);
+  } catch (error) {
+    throw new SecretDecryptionError(
+      `Failed to decrypt secret "${key}": ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 }
 
 export async function setSecret(
