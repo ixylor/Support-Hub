@@ -79,4 +79,45 @@ describe("attachment storage", () => {
     const files = await readdir(messageDir).catch(() => []);
     expect(files).toHaveLength(0);
   });
+
+  it("sanitizes path traversal in providerMessageId and writes nothing outside the base directory", async () => {
+    const { saveAttachment } = await import("./attachment-storage");
+
+    const path = await saveAttachment(
+      "../../../../etc/passwd",
+      "file.txt",
+      Buffer.from("evil")
+    );
+
+    // Traversal attempt is neutralized: directory created with basename only
+    expect(path).toContain("passwd");
+    expect(path).toContain("file.txt");
+    // Nothing outside the base attachments directory
+    expect(existsSync(resolve(TEST_DIR, "..", "..", "etc", "passwd"))).toBe(false);
+    expect(existsSync(resolve(TEST_DIR, "..", "etc", "passwd"))).toBe(false);
+  });
+
+  it("sanitizes path separators in providerMessageId and writes nothing outside the base directory", async () => {
+    const { saveAttachment } = await import("./attachment-storage");
+
+    const msgIdWithSeparator = "msg/subfolder";
+    const path = await saveAttachment(msgIdWithSeparator, "file.txt", Buffer.from("data"));
+
+    // Path separator is neutralized: directory created with basename only
+    expect(path).toContain("subfolder");
+    expect(path).toContain("file.txt");
+    // No nested directory structure outside the base directory
+    expect(existsSync(resolve(TEST_DIR, "msg", "subfolder"))).toBe(false);
+  });
+
+  it("rejects dot-only providerMessageIds and writes nothing outside the base directory", async () => {
+    const { saveAttachment } = await import("./attachment-storage");
+
+    await expect(saveAttachment(".", "file.txt", Buffer.from("evil"))).rejects.toThrow(/Invalid/);
+    await expect(saveAttachment("..", "file.txt", Buffer.from("evil"))).rejects.toThrow(/Invalid/);
+
+    // Verify nothing was created in the attachments directory
+    const dirs = await readdir(TEST_DIR).catch(() => []);
+    expect(dirs).toHaveLength(0);
+  });
 });

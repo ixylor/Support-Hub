@@ -12,11 +12,29 @@ export async function saveAttachment(
   filename: string,
   content: Buffer
 ): Promise<string> {
-  const dir = resolve(join(attachmentsDir(), providerMessageId));
+  // Sanitize providerMessageId: extract basename, reject empty or dot-only names.
+  const safeMessageId = basename(providerMessageId);
+  if (!safeMessageId || safeMessageId === "." || safeMessageId === "..") {
+    throw new Error(`Invalid provider message ID: ${providerMessageId}`);
+  }
+
+  const baseDir = resolve(attachmentsDir());
+  const dir = resolve(join(baseDir, safeMessageId));
+
+  // Verify the resolved directory is inside the base attachments directory.
+  const messageDirRelativePath = relative(baseDir, dir);
+  if (
+    messageDirRelativePath.startsWith("..") ||
+    messageDirRelativePath === "" ||
+    messageDirRelativePath === "."
+  ) {
+    throw new Error(`Provider message ID path traversal detected: ${providerMessageId}`);
+  }
+
   await mkdir(dir, { recursive: true });
 
   // Sanitize filename: extract basename, reject empty or dot-only names.
-  let safe = basename(filename);
+  const safe = basename(filename);
   if (!safe || safe === "." || safe === "..") {
     throw new Error(`Invalid attachment filename: ${filename}`);
   }
@@ -24,8 +42,8 @@ export async function saveAttachment(
   const storagePath = resolve(join(dir, safe));
 
   // Verify the resolved path is still inside the message directory (defense in depth).
-  const relativePath = relative(dir, storagePath);
-  if (relativePath.startsWith("..") || relativePath === "." || relativePath === "") {
+  const fileRelativePath = relative(dir, storagePath);
+  if (fileRelativePath.startsWith("..") || fileRelativePath === "." || fileRelativePath === "") {
     throw new Error(`Attachment path traversal detected: ${filename}`);
   }
 
