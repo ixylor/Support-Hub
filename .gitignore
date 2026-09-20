@@ -51,3 +51,6 @@ skills-lock.json
 
 # design docs (specs/plans) — kept locally, not tracked in git
 docs/
+
+# ingested email attachments — stored on disk, not tracked in git
+/storage/
