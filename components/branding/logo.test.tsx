@@ -12,4 +12,10 @@ describe("Logo", () => {
     render(<Logo size="lg" />);
     expect(screen.getByText("Support Hub")).toHaveClass("text-2xl");
   });
+
+  it("exposes an accessible name but no wordmark text in mark-only mode", () => {
+    render(<Logo variant="mark" />);
+    expect(screen.getByRole("img", { name: "Support Hub" })).toBeInTheDocument();
+    expect(screen.queryByText("Support Hub")).not.toBeInTheDocument();
+  });
 });
