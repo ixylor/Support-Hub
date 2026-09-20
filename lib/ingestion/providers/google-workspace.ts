@@ -150,8 +150,16 @@ async function fetchFullMessage(accessToken: string, id: string): Promise<Provid
   };
 }
 
+// `connectMailbox` stores a cursor at connection time, so `getNewMessages` should
+// only ever see a real timestamp in normal operation - there is no backfill of mail
+// that predates the connection. A null cursor is kept only as a defensive fallback
+// for a row created before that change existed. Treat it as "now": Gmail's `after:`
+// filter takes whole-day epoch seconds and treats `after:0` as matching nothing
+// (confirmed against a live mailbox), so falling back to epoch there would silently
+// drop the first sync forever. Falling back to "now" instead means no historical
+// backfill, matching the intended behaviour.
 async function getNewMessages(accessToken: string, cursor: string | null) {
-  const afterSeconds = Math.floor(new Date(cursor ?? 0).getTime() / 1000);
+  const afterSeconds = Math.floor(new Date(cursor ?? new Date()).getTime() / 1000);
   const query = encodeURIComponent(`in:inbox after:${afterSeconds}`);
   const response = await fetch(`${GMAIL_BASE}/messages?q=${query}&maxResults=50`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -166,9 +174,17 @@ async function getNewMessages(accessToken: string, cursor: string | null) {
     messages.push(await fetchFullMessage(accessToken, item.id));
   }
 
+  // Gmail's list endpoint returns newest-first. Sort ascending so this provider
+  // matches the ordering contract the caller relies on (Microsoft's provider
+  // already returns oldest-first via $orderby=receivedDateTime asc): the cron
+  // route advances its cursor past the longest run of consecutive successes
+  // from the start of the batch, which only skips exactly what it already
+  // ingested when messages arrive in chronological order.
+  messages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+
   const nextCursor =
     messages.length > 0
-      ? new Date(Math.max(...messages.map((message) => message.sentAt.getTime()))).toISOString()
+      ? messages[messages.length - 1].sentAt.toISOString()
       : (cursor ?? new Date(0).toISOString());
 
   return { messages, nextCursor };

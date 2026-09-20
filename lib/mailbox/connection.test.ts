@@ -47,8 +47,25 @@ describe("mailbox connection store", () => {
       provider: "microsoft",
       mailboxAddress: "support@example.com",
       status: "active",
-      syncCursor: null,
     });
+  });
+
+  it("stores a sync cursor at connection time instead of leaving it null", async () => {
+    const before = Date.now();
+    await connectMailbox({
+      provider: "microsoft",
+      mailboxAddress: "support@example.com",
+      refreshToken: "refresh-token-value",
+      connectedByUserId: userId,
+    });
+    const after = Date.now();
+
+    const connection = await getActiveMailboxConnection();
+
+    expect(connection?.syncCursor).not.toBeNull();
+    const cursorTime = new Date(connection!.syncCursor as string).getTime();
+    expect(cursorTime).toBeGreaterThanOrEqual(before);
+    expect(cursorTime).toBeLessThanOrEqual(after);
   });
 
   it("round-trips the refresh token through encryption", async () => {

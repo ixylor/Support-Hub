@@ -56,12 +56,17 @@ export async function connectMailbox(input: {
       .set({ status: "disconnected" })
       .where(eq(mailboxConnections.status, "active"));
 
+    // Start the cursor at connection time rather than leaving it null: "sync from
+    // now" is the intended behaviour for a freshly connected mailbox (no backfill of
+    // existing mail), and recording that explicitly makes the stored cursor
+    // self-explanatory instead of relying on providers to special-case null.
     await tx.insert(mailboxConnections).values({
       provider: input.provider,
       mailboxAddress: input.mailboxAddress,
       encryptedRefreshToken: encryptSecret(input.refreshToken),
       connectedByUserId: input.connectedByUserId,
       status: "active",
+      syncCursor: new Date().toISOString(),
     });
   });
 }
