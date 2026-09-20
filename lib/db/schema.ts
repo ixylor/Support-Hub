@@ -10,6 +10,7 @@ import {
   vector,
   index,
   uniqueIndex,
+  customType,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { user } from "@/lib/auth/schema";
@@ -158,28 +159,80 @@ export const attachments = pgTable("attachments", {
   sizeBytes: integer("size_bytes").notNull(),
 });
 
-export const kbEntries = pgTable("kb_entries", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
+export const kbSourceTypeEnum = pgEnum("kb_source_type", [
+  "pdf",
+  "docx",
+  "text",
+  "markdown",
+  "article",
+]);
+
+export const kbStatusEnum = pgEnum("kb_status", [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+]);
+
+export const kbEntries = pgTable(
+  "kb_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    // Extracted text. Null until the parser has run.
+    content: text("content"),
+    sourceType: kbSourceTypeEnum("source_type").notNull(),
+    // All null for a typed-in article, which has no underlying file.
+    storagePath: text("storage_path"),
+    originalFilename: text("original_filename"),
+    contentType: text("content_type"),
+    sizeBytes: integer("size_bytes"),
+    status: kbStatusEnum("status").notNull().default("pending"),
+    errorMessage: text("error_message"),
+    uploadedByUserId: text("uploaded_by_user_id").references(() => user.id),
+    contentHash: text("content_hash"),
+    embeddingModel: text("embedding_model"),
+    tags: text("tags").array().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("kb_entries_tags_idx").using("gin", table.tags)]
+);
+
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "tsvector";
+  },
 });
 
 // Dimensions match Azure OpenAI's text-embedding-3-small; revisit if the
 // embedding model changes in the AI Response Pipeline phase.
-export const kbChunks = pgTable("kb_chunks", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  kbEntryId: uuid("kb_entry_id")
-    .notNull()
-    .references(() => kbEntries.id),
-  chunkIndex: integer("chunk_index").notNull(),
-  chunkText: text("chunk_text").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }),
-});
+export const kbChunks = pgTable(
+  "kb_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kbEntryId: uuid("kb_entry_id")
+      .notNull()
+      .references(() => kbEntries.id, { onDelete: "cascade" }),
+    chunkIndex: integer("chunk_index").notNull(),
+    chunkText: text("chunk_text").notNull(),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    searchVector: tsvector("search_vector").generatedAlwaysAs(
+      sql`to_tsvector('english', chunk_text)`
+    ),
+  },
+  (table) => [
+    index("kb_chunks_search_vector_idx").using("gin", table.searchVector),
+    index("kb_chunks_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops")
+    ),
+    index("kb_chunks_entry_idx").on(table.kbEntryId),
+  ]
+);
 
 export const promptTemplates = pgTable(
   "prompt_templates",
@@ -244,3 +297,39 @@ export const appSecrets = pgTable("app_secrets", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 });
+
+export const aiDeploymentRoleEnum = pgEnum("ai_deployment_role", [
+  "chat",
+  "embedding",
+  "extraction",
+]);
+
+// Deployments are rows rather than fixed secret keys so an admin can add a new
+// model from the UI without a schema change — see the AI Provider settings page.
+export const aiDeployments = pgTable(
+  "ai_deployments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    role: aiDeploymentRoleEnum("role").notNull(),
+    deploymentName: text("deployment_name").notNull(),
+    modelName: text("model_name").notNull(),
+    // Required for the embedding role; the vector column's width depends on it.
+    dimensions: integer("dimensions"),
+    isActive: boolean("is_active").notNull().default(true),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => user.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    // Mirrors prompt_templates_one_active_per_key: the database itself refuses
+    // two active deployments for one role, backstopping the advisory lock in
+    // lib/ai/config.ts.
+    uniqueIndex("ai_deployments_one_active_per_role")
+      .on(table.role)
+      .where(sql`${table.isActive} = true`),
+  ]
+);
