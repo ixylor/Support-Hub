@@ -112,6 +112,61 @@ describe("ingestMessage", () => {
     expect(reopened.status).toBe("new");
   });
 
+  it("reopens a ticket waiting on the customer when a new reply arrives on its thread", async () => {
+    const threadId = crypto.randomUUID();
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
+    await db.update(tickets).set({ status: "waiting_on_customer" }).where(eq(tickets.id, ticket.id));
+
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+
+    const [reopened] = await db.select().from(tickets).where(eq(tickets.id, ticket.id));
+    expect(reopened.status).toBe("new");
+  });
+
+  it("creates separate tickets when different mailbox connections share a provider thread id", async () => {
+    const result = await auth.api.signUpEmail({
+      body: { email: `ingest-test-${crypto.randomUUID()}@example.com`, password: "x".repeat(16), name: "Seed" },
+    });
+    const [otherConnection] = await db
+      .insert(mailboxConnections)
+      .values({
+        provider: "microsoft",
+        mailboxAddress: "support-other@example.com",
+        encryptedRefreshToken: "unused-in-this-test",
+        connectedByUserId: result.user.id,
+        status: "disconnected",
+      })
+      .returning({ id: mailboxConnections.id });
+
+    const threadId = crypto.randomUUID();
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(
+      otherConnection.id,
+      buildMessage({ providerThreadId: threadId }),
+      fakeProvider,
+      "access-token"
+    );
+
+    const ticketRows = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
+    expect(ticketRows).toHaveLength(2);
+    expect(new Set(ticketRows.map((t) => t.mailboxConnectionId)).size).toBe(2);
+
+    // Cleanup — this connection isn't covered by the shared afterAll.
+    for (const ticket of ticketRows.filter((t) => t.mailboxConnectionId === otherConnection.id)) {
+      const messageRows = await db
+        .select({ id: ticketMessages.id })
+        .from(ticketMessages)
+        .where(eq(ticketMessages.ticketId, ticket.id));
+      for (const messageRow of messageRows) {
+        await db.delete(attachments).where(eq(attachments.ticketMessageId, messageRow.id));
+      }
+      await db.delete(ticketMessages).where(eq(ticketMessages.ticketId, ticket.id));
+    }
+    await db.delete(tickets).where(eq(tickets.mailboxConnectionId, otherConnection.id));
+    await db.delete(mailboxConnections).where(eq(mailboxConnections.id, otherConnection.id));
+  });
+
   it("skips a message whose provider message id was already ingested", async () => {
     const message = buildMessage();
     await ingestMessage(connectionId, message, fakeProvider, "access-token");
@@ -122,6 +177,71 @@ describe("ingestMessage", () => {
       .from(ticketMessages)
       .where(eq(ticketMessages.providerMessageId, message.providerMessageId));
     expect(rows).toHaveLength(1);
+  });
+
+  it("handles a concurrent duplicate insert gracefully instead of throwing", async () => {
+    const message = buildMessage();
+    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+
+    // Simulate a second poll cycle that already passed its own dedupe SELECT
+    // for the same message by inserting directly, racing the real insert.
+    await expect(
+      db.insert(ticketMessages).values({
+        ticketId: (
+          await db.select({ id: tickets.id }).from(tickets).where(eq(tickets.providerThreadId, message.providerThreadId))
+        )[0].id,
+        direction: "inbound",
+        senderEmail: message.senderEmail,
+        body: message.bodyText,
+        providerMessageId: message.providerMessageId,
+        sentAt: message.sentAt,
+      })
+    ).rejects.toThrow();
+
+    // ingestMessage itself, given the same already-ingested message, must
+    // return gracefully rather than throwing a raw unique-violation.
+    await expect(ingestMessage(connectionId, message, fakeProvider, "access-token")).resolves.toBeUndefined();
+
+    const rows = await db
+      .select()
+      .from(ticketMessages)
+      .where(eq(ticketMessages.providerMessageId, message.providerMessageId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("leaves no message row when an attachment download fails partway through", async () => {
+    const failingProvider: MailProvider = {
+      ...fakeProvider,
+      downloadAttachment: vi
+        .fn()
+        .mockResolvedValueOnce(Buffer.from("first attachment"))
+        .mockRejectedValueOnce(new Error("network blip")),
+    };
+    const message = buildMessage({
+      attachments: [
+        { id: "att-1", filename: "first.txt", contentType: "text/plain" },
+        { id: "att-2", filename: "second.txt", contentType: "text/plain" },
+      ],
+    });
+
+    await expect(ingestMessage(connectionId, message, failingProvider, "access-token")).rejects.toThrow(
+      "network blip"
+    );
+
+    const rows = await db
+      .select()
+      .from(ticketMessages)
+      .where(eq(ticketMessages.providerMessageId, message.providerMessageId));
+    expect(rows).toHaveLength(0);
+
+    // Retrying with a working provider must succeed cleanly, proving the
+    // failed attempt left nothing behind that would block a retry.
+    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    const retried = await db
+      .select()
+      .from(ticketMessages)
+      .where(eq(ticketMessages.providerMessageId, message.providerMessageId));
+    expect(retried).toHaveLength(1);
   });
 
   it("downloads and stores attachments against the inserted message", async () => {

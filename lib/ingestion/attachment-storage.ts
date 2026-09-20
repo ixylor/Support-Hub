@@ -8,11 +8,11 @@ function attachmentsDir(): string {
 }
 
 export async function saveAttachment(
-  ticketMessageId: string,
+  providerMessageId: string,
   filename: string,
   content: Buffer
 ): Promise<string> {
-  const dir = resolve(join(attachmentsDir(), ticketMessageId));
+  const dir = resolve(join(attachmentsDir(), providerMessageId));
   await mkdir(dir, { recursive: true });
 
   // Sanitize filename: extract basename, reject empty or dot-only names.

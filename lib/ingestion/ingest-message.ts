@@ -48,31 +48,73 @@ export async function ingestMessage(
         mailboxConnectionId,
         providerThreadId: message.providerThreadId,
       })
+      .onConflictDoNothing({ target: [tickets.mailboxConnectionId, tickets.providerThreadId] })
       .returning({ id: tickets.id });
-    ticketId = created.id;
+
+    if (created) {
+      ticketId = created.id;
+    } else {
+      // Another poll cycle won the race and created the ticket for this
+      // thread first — pick it up rather than treating the conflict as an error.
+      const [winner] = await db
+        .select({ id: tickets.id })
+        .from(tickets)
+        .where(
+          and(
+            eq(tickets.mailboxConnectionId, mailboxConnectionId),
+            eq(tickets.providerThreadId, message.providerThreadId)
+          )
+        )
+        .limit(1);
+      ticketId = winner.id;
+    }
   }
 
-  const [insertedMessage] = await db
-    .insert(ticketMessages)
-    .values({
-      ticketId,
-      direction: "inbound",
-      senderEmail: message.senderEmail,
-      body: message.bodyText,
-      providerMessageId: message.providerMessageId,
-      sentAt: message.sentAt,
-    })
-    .returning({ id: ticketMessages.id });
-
+  // Download and persist attachments to disk before touching the database so
+  // that a failure here never leaves a half-ingested message row behind. The
+  // per-message directory is keyed on the provider message id (stable and
+  // unique) rather than the ticket_messages row, since that row does not
+  // exist yet.
+  const storedAttachments: { filename: string; storagePath: string; contentType: string; sizeBytes: number }[] = [];
   for (const attachment of message.attachments) {
     const content = await provider.downloadAttachment(accessToken, message.providerMessageId, attachment);
-    const storagePath = await saveAttachment(insertedMessage.id, attachment.filename, content);
-    await db.insert(attachments).values({
-      ticketMessageId: insertedMessage.id,
+    const storagePath = await saveAttachment(message.providerMessageId, attachment.filename, content);
+    storedAttachments.push({
       filename: attachment.filename,
       storagePath,
       contentType: attachment.contentType,
       sizeBytes: content.byteLength,
     });
   }
+
+  await db.transaction(async (tx) => {
+    const [insertedMessage] = await tx
+      .insert(ticketMessages)
+      .values({
+        ticketId,
+        direction: "inbound",
+        senderEmail: message.senderEmail,
+        body: message.bodyText,
+        providerMessageId: message.providerMessageId,
+        sentAt: message.sentAt,
+      })
+      .onConflictDoNothing({ target: ticketMessages.providerMessageId })
+      .returning({ id: ticketMessages.id });
+
+    if (!insertedMessage) {
+      // Another poll cycle ingested this message concurrently. The
+      // attachments we just downloaded become orphaned files on disk,
+      // which is harmless — nothing references them.
+      return;
+    }
+
+    if (storedAttachments.length > 0) {
+      await tx.insert(attachments).values(
+        storedAttachments.map((stored) => ({
+          ticketMessageId: insertedMessage.id,
+          ...stored,
+        }))
+      );
+    }
+  });
 }
