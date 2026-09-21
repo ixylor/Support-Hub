@@ -9,7 +9,7 @@ export async function registerHandlers(boss: PgBoss): Promise<void> {
     console.log(`Mailbox poll ingested ${result.ingested} message(s).`, result.reason ?? "");
   });
 
-  await boss.work(QUEUES.kbProcess, { batchSize: 1 }, async ([job]) => {
+  await boss.work<{ entryId: string }>(QUEUES.kbProcess, { batchSize: 1 }, async ([job]) => {
     await processKbEntry(job.data.entryId);
   });
 }
