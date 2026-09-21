@@ -161,7 +161,45 @@ async function main() {
       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
     `;
 
-    if (tables.length === 0) {
+    // agents and agent_prompt_versions are seeded by migration 0006, not by
+    // application code, which is why they are preserved here rather than
+    // truncated and re-created: there's no app-code seed step to re-run them
+    // from.
+    //
+    // Excluding them from the table list below isn't enough on its own:
+    // Postgres's TRUNCATE ... CASCADE truncates every table with an FK to a
+    // truncated table based on the constraint's existence, not on whether
+    // any row currently references it. "user" has to be truncated (real
+    // per-test rows), and both ai_deployments.updated_by_user_id and
+    // agent_prompt_versions.updated_by_user_id reference "user" directly,
+    // while agents.ai_deployment_id references ai_deployments — so
+    // truncating "user" would cascade straight into agent_prompt_versions,
+    // and separately through ai_deployments into agents (and from there,
+    // via agent_prompt_versions' own ON DELETE CASCADE, into
+    // agent_prompt_versions again), regardless of any exclusion list.
+    // Dropping both FKs for the duration of the truncate severs those
+    // chains; they're recreated immediately after, once the columns they
+    // constrain have been nulled so the recreated constraints have nothing
+    // to validate against a row TRUNCATE is about to remove.
+    const hasAgentsCatalog = tables.some((t) => t.table_name === "agents");
+    const excludedFromTruncate = hasAgentsCatalog ? ["agents", "agent_prompt_versions"] : [];
+
+    if (hasAgentsCatalog) {
+      await sql`
+        ALTER TABLE "agents"
+        DROP CONSTRAINT IF EXISTS "agents_ai_deployment_id_ai_deployments_id_fk"
+      `;
+      await sql`
+        ALTER TABLE "agent_prompt_versions"
+        DROP CONSTRAINT IF EXISTS "agent_prompt_versions_updated_by_user_id_user_id_fk"
+      `;
+      await sql`UPDATE "agents" SET "ai_deployment_id" = NULL`;
+      await sql`UPDATE "agent_prompt_versions" SET "updated_by_user_id" = NULL`;
+    }
+
+    const truncatable = tables.filter((t) => !excludedFromTruncate.includes(t.table_name));
+
+    if (truncatable.length === 0) {
       console.log("No tables found in the public schema — nothing to reset.");
     } else {
       // One statement, not per-table deletes in dependency order: TRUNCATE
@@ -171,28 +209,36 @@ async function main() {
       // be). This never touches the drizzle schema's migration history table
       // or the pgboss schema (see note below), so the database stays
       // migrated and pg-boss's own state is left alone.
-      const tableList = tables.map((t) => `"public"."${t.table_name}"`).join(", ");
+      const tableList = truncatable.map((t) => `"public"."${t.table_name}"`).join(", ");
       await sql.unsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
-      console.log(`Truncated ${tables.length} table(s) in the public schema of ${testIdentity.database}.`);
+      console.log(`Truncated ${truncatable.length} table(s) in the public schema of ${testIdentity.database}.`);
     }
 
-    // The four agent rows and their active version-1 prompts are seeded by
-    // migration 0006, not by application code — TRUNCATE above wipes them
-    // like any other row. Re-seed them here so every test run starts from
-    // the same fixed catalog the app expects to exist in every environment,
-    // the same way a fresh `pnpm db:migrate` would produce it.
-    if (tables.some((t) => t.table_name === "agents")) {
+    // Normalize the preserved agent catalog back to a known baseline, so
+    // runs stay independent of whatever an earlier test file left behind:
+    // drop any extra prompt versions a test created, reactivate the seeded
+    // version 1 (with no updater, matching how migration 0006 inserted it),
+    // and re-enable every agent. ai_deployment_id is already null from
+    // before the truncate. temperature is deliberately left alone — per-
+    // agent defaults differ and a later task's tests manage it.
+    if (hasAgentsCatalog) {
       await sql`
-        INSERT INTO "agents" ("key", "name", "description", "temperature") VALUES
-          ('triage', 'Triage', 'Decides whether an inbound email is a genuine support request, and assigns its category and priority.', '0.0'),
-          ('router', 'Router', 'Decides whether a ticket can be answered now, needs more information from the customer, or must be escalated.', '0.0'),
-          ('info_requester', 'Information Requester', 'Writes the reply that asks the customer for the specific details still missing.', '0.3'),
-          ('drafter', 'Drafter', 'Writes the answer, grounded in the retrieved knowledge base passages.', '0.3')
+        ALTER TABLE "agents"
+        ADD CONSTRAINT "agents_ai_deployment_id_ai_deployments_id_fk"
+        FOREIGN KEY ("ai_deployment_id") REFERENCES "ai_deployments"("id")
       `;
       await sql`
-        INSERT INTO "agent_prompt_versions" ("agent_id", "content", "version", "is_active")
-        SELECT id, 'Seed prompt for ' || key::text, 1, true FROM "agents"
+        ALTER TABLE "agent_prompt_versions"
+        ADD CONSTRAINT "agent_prompt_versions_updated_by_user_id_user_id_fk"
+        FOREIGN KEY ("updated_by_user_id") REFERENCES "user"("id")
       `;
+      await sql`DELETE FROM "agent_prompt_versions" WHERE "version" > 1`;
+      await sql`
+        UPDATE "agent_prompt_versions"
+        SET "is_active" = true, "updated_by_user_id" = NULL
+        WHERE "version" = 1
+      `;
+      await sql`UPDATE "agents" SET "is_enabled" = true`;
     }
 
     // Deliberately NOT truncating the pgboss schema. pg-boss owns that schema
