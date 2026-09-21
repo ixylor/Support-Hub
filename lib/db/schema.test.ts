@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
+  agentPromptVersions,
+  agents,
   aiDeployments,
   appSecrets,
   kbChunks,
   kbEntries,
   mailboxConnections,
-  promptTemplates,
   ticketAiDrafts,
   ticketMessages,
   tickets,
@@ -17,19 +18,13 @@ import { user } from "@/lib/auth/schema";
 describe("domain schema", () => {
   it("exposes the columns the AI pipeline phase will rely on", () => {
     expect(Object.keys(ticketAiDrafts)).toEqual(
-      expect.arrayContaining(["graphThreadId", "promptTemplateId", "confidenceScore"])
+      expect.arrayContaining(["graphThreadId", "agentPromptVersionId", "confidenceScore"])
     );
   });
 
   it("exposes the columns the review dashboard will rely on", () => {
     expect(Object.keys(tickets)).toEqual(
       expect.arrayContaining(["status", "category", "priority"])
-    );
-  });
-
-  it("supports versioned prompt templates", () => {
-    expect(Object.keys(promptTemplates)).toEqual(
-      expect.arrayContaining(["key", "version", "isActive"])
     );
   });
 
@@ -193,5 +188,52 @@ describe("kb_entries and kb_chunks", () => {
     `);
 
     expect(result[0].hits).toBe(1);
+  });
+});
+
+describe("agents schema", () => {
+  it("seeds exactly the four fixed agent roles", async () => {
+    const rows = await db.select({ key: agents.key }).from(agents).orderBy(agents.key);
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "drafter",
+      "info_requester",
+      "router",
+      "triage",
+    ]);
+  });
+
+  it("gives every seeded agent an active version 1 prompt", async () => {
+    const rows = await db
+      .select({ agentId: agentPromptVersions.agentId, version: agentPromptVersions.version })
+      .from(agentPromptVersions)
+      .where(eq(agentPromptVersions.isActive, true));
+
+    expect(rows).toHaveLength(4);
+    expect(rows.every((row) => row.version === 1)).toBe(true);
+  });
+
+  it("refuses a second active prompt version for the same agent", async () => {
+    const [agent] = await db.select({ id: agents.id }).from(agents).limit(1);
+
+    // drizzle-postgres-js wraps the driver error in a "Failed query: ..."
+    // message and puts the actual Postgres reason on `.cause` — assert on
+    // that, not the wrapper, to check the constraint that actually fired.
+    let thrown: unknown;
+    try {
+      await db.insert(agentPromptVersions).values({
+        agentId: agent.id,
+        content: "a competing prompt",
+        version: 2,
+        isActive: true,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const cause = (thrown as { cause?: unknown }).cause;
+    expect(cause).toBeInstanceOf(Error);
+    expect((cause as Error).message).toMatch(/agent_prompt_versions_one_active_per_agent/);
   });
 });

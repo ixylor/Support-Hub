@@ -176,6 +176,25 @@ async function main() {
       console.log(`Truncated ${tables.length} table(s) in the public schema of ${testIdentity.database}.`);
     }
 
+    // The four agent rows and their active version-1 prompts are seeded by
+    // migration 0006, not by application code — TRUNCATE above wipes them
+    // like any other row. Re-seed them here so every test run starts from
+    // the same fixed catalog the app expects to exist in every environment,
+    // the same way a fresh `pnpm db:migrate` would produce it.
+    if (tables.some((t) => t.table_name === "agents")) {
+      await sql`
+        INSERT INTO "agents" ("key", "name", "description", "temperature") VALUES
+          ('triage', 'Triage', 'Decides whether an inbound email is a genuine support request, and assigns its category and priority.', '0.0'),
+          ('router', 'Router', 'Decides whether a ticket can be answered now, needs more information from the customer, or must be escalated.', '0.0'),
+          ('info_requester', 'Information Requester', 'Writes the reply that asks the customer for the specific details still missing.', '0.3'),
+          ('drafter', 'Drafter', 'Writes the answer, grounded in the retrieved knowledge base passages.', '0.3')
+      `;
+      await sql`
+        INSERT INTO "agent_prompt_versions" ("agent_id", "content", "version", "is_active")
+        SELECT id, 'Seed prompt for ' || key::text, 1, true FROM "agents"
+      `;
+    }
+
     // Deliberately NOT truncating the pgboss schema. pg-boss owns that schema
     // end to end — it tracks its own migration version in pgboss.version and
     // expects to manage job/queue state through its own API, not have rows

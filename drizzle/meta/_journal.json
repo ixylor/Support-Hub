@@ -43,6 +43,13 @@
       "when": 1789892180622,
       "tag": "0005_nappy_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789984830269,
+      "tag": "0006_third_firebrand",
+      "breakpoints": true
     }
   ]
 }

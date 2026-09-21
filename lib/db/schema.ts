@@ -234,26 +234,55 @@ export const kbChunks = pgTable(
   ]
 );
 
-export const promptTemplates = pgTable(
-  "prompt_templates",
+// The graph's node set is fixed in code, so the key is an enum rather than
+// free text — an agent row that no node reads would be dead configuration.
+export const agentKeyEnum = pgEnum("agent_key", [
+  "drafter",
+  "info_requester",
+  "router",
+  "triage",
+]);
+
+export const agents = pgTable("agents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: agentKeyEnum("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  // Null falls back to the active "chat" deployment, so an agent stays
+  // runnable before an admin has pinned it to a specific model.
+  aiDeploymentId: uuid("ai_deployment_id").references(() => aiDeployments.id),
+  temperature: numeric("temperature").notNull().default("0.2"),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export const agentPromptVersions = pgTable(
+  "agent_prompt_versions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    key: text("key").notNull(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     version: integer("version").notNull(),
     isActive: boolean("is_active").notNull().default(true),
-    updatedByUserId: text("updated_by_user_id")
-      .notNull()
-      .references(() => user.id),
+    // Null on the seeded version 1 rows — no user exists when the migration
+    // that inserts them runs.
+    updatedByUserId: text("updated_by_user_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Backstops the advisory-lock serialization in activateNewPromptVersion:
-    // even if that lock is ever bypassed, the DB itself can't hold two active
-    // versions for the same key.
-    uniqueIndex("prompt_templates_one_active_per_key")
-      .on(table.key)
+    // Same one-row-per-key trick as prompt_templates_one_active_per_key: the
+    // database refuses two active prompts for one agent even if the advisory
+    // lock in lib/agents/prompts.ts is ever bypassed.
+    uniqueIndex("agent_prompt_versions_one_active_per_agent")
+      .on(table.agentId)
       .where(sql`${table.isActive} = true`),
+    index("agent_prompt_versions_agent_id_idx").on(table.agentId),
   ]
 );
 
@@ -265,9 +294,9 @@ export const ticketAiDrafts = pgTable("ticket_ai_drafts", {
   draftBody: text("draft_body").notNull(),
   citedKbChunkIds: uuid("cited_kb_chunk_ids").array().notNull().default([]),
   confidenceScore: numeric("confidence_score").notNull(),
-  promptTemplateId: uuid("prompt_template_id")
+  agentPromptVersionId: uuid("agent_prompt_version_id")
     .notNull()
-    .references(() => promptTemplates.id),
+    .references(() => agentPromptVersions.id),
   // LangGraph checkpoint/thread reference, populated starting in the AI
   // Response Pipeline phase so an interrupted run can resume.
   graphThreadId: text("graph_thread_id"),
