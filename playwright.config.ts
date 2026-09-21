@@ -42,26 +42,53 @@ const testServerUrl = `http://localhost:${testServerPort}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  webServer: {
-    command: `pnpm dev -p ${testServerPort}`,
-    url: testServerUrl,
-    reuseExistingServer: false,
-    // Explicit here (rather than relying solely on the process.env mutation
-    // above) so the spawned server's database is visible directly in this
-    // config, not just inferred from load order.
-    env: {
-      ...process.env,
-      DATABASE_URL: testDatabaseUrl,
-      PORT: String(testServerPort),
-      // Better Auth rejects requests whose origin isn't BETTER_AUTH_URL, so
-      // this has to match the port above or every request gets an "Invalid
-      // origin" error.
-      BETTER_AUTH_URL: testServerUrl,
-      // See next.config.ts — keeps this server's dev-server lockfile and
-      // build output separate from the developer's own `pnpm dev`.
-      NEXT_DIST_DIR: ".next-test",
+  webServer: [
+    {
+      name: "Next server",
+      command: `pnpm dev -p ${testServerPort}`,
+      url: testServerUrl,
+      reuseExistingServer: false,
+      // Explicit here (rather than relying solely on the process.env mutation
+      // above) so the spawned server's database is visible directly in this
+      // config, not just inferred from load order.
+      env: {
+        ...process.env,
+        DATABASE_URL: testDatabaseUrl,
+        PORT: String(testServerPort),
+        // Better Auth rejects requests whose origin isn't BETTER_AUTH_URL, so
+        // this has to match the port above or every request gets an "Invalid
+        // origin" error.
+        BETTER_AUTH_URL: testServerUrl,
+        // See next.config.ts — keeps this server's dev-server lockfile and
+        // build output separate from the developer's own `pnpm dev`.
+        NEXT_DIST_DIR: ".next-test",
+      },
     },
-  },
+    {
+      // The knowledge base upload test needs a running worker to move a
+      // document from pending to ready. It has no HTTP endpoint of its own,
+      // so readiness is detected from its startup log line rather than a
+      // port or URL.
+      //
+      // Deliberately not `pnpm worker`: pnpm's own shim plus the `tsx` CLI's
+      // internal re-exec each add a layer of shell/process nesting, and on
+      // this Windows setup those inner processes can outlive Playwright's
+      // tree-kill of the outer shell, leaking a worker process that keeps
+      // draining the queue after the suite exits. Running the loader
+      // directly (the same thing the `tsx` CLI does internally) keeps this
+      // to a single node process under the spawned shell, which Playwright's
+      // teardown reliably kills.
+      name: "Worker",
+      command: "node --import tsx lib/jobs/worker.ts",
+      env: {
+        ...process.env,
+        DATABASE_URL: testDatabaseUrl,
+      },
+      reuseExistingServer: false,
+      stdout: "pipe",
+      wait: { stdout: /Worker started\./ },
+    },
+  ],
   use: {
     baseURL: testServerUrl,
   },
