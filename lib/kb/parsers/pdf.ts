@@ -34,7 +34,7 @@ export const pdfParser: DocumentParser & {
     return contentType === "application/pdf";
   },
 
-  async extract(buffer, options = {}) {
+  async extract(buffer: Buffer, options: { pageCount?: number } = {}) {
     const credentials = await getAzureCredentials();
     if (!credentials) {
       throw new AiNotConfiguredError(
