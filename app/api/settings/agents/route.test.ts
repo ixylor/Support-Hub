@@ -45,8 +45,11 @@ describe("PUT /api/settings/agents", () => {
   });
 
   it("activates a new prompt version only when the prompt changed", async () => {
-    await PUT(request({ key: "triage", aiDeploymentId: null, temperature: 0.1, isEnabled: true }));
+    const response = await PUT(request({ key: "triage", aiDeploymentId: null, temperature: 0.1, isEnabled: true }));
 
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ ok: true });
     expect(activateAgentPromptVersion).not.toHaveBeenCalled();
     expect(updateAgentConfig).toHaveBeenCalledWith("triage", {
       aiDeploymentId: null,
@@ -56,8 +59,9 @@ describe("PUT /api/settings/agents", () => {
   });
 
   it("activates a new prompt version when one is supplied", async () => {
-    await PUT(request({ key: "drafter", prompt: "  a new prompt  " }));
+    const response = await PUT(request({ key: "drafter", prompt: "  a new prompt  " }));
 
+    expect(response.status).toBe(200);
     expect(activateAgentPromptVersion).toHaveBeenCalledWith("drafter", "a new prompt", "user-1");
   });
 
@@ -65,6 +69,41 @@ describe("PUT /api/settings/agents", () => {
     const response = await PUT(request({ key: "drafter", prompt: "   " }));
 
     expect(response.status).toBe(400);
+    expect(activateAgentPromptVersion).not.toHaveBeenCalled();
+  });
+
+  it("accepts a single-field partial update", async () => {
+    const response = await PUT(request({ key: "triage", isEnabled: false }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ ok: true });
+    expect(updateAgentConfig).toHaveBeenCalledWith("triage", { isEnabled: false });
+    expect(activateAgentPromptVersion).not.toHaveBeenCalled();
+  });
+
+  it("accepts a partial update with two fields", async () => {
+    const response = await PUT(request({ key: "triage", temperature: 0.5, isEnabled: false }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ ok: true });
+    expect(updateAgentConfig).toHaveBeenCalledWith("triage", { temperature: 0.5, isEnabled: false });
+  });
+
+  it("validates all fields before any mutation when multiple fields are supplied", async () => {
+    const response = await PUT(request({ key: "triage", prompt: "new text", temperature: "not-a-number" }));
+
+    expect(response.status).toBe(400);
+    expect(activateAgentPromptVersion).not.toHaveBeenCalled();
+    expect(updateAgentConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects a request with only key and no updatable fields", async () => {
+    const response = await PUT(request({ key: "triage" }));
+
+    expect(response.status).toBe(400);
+    expect(updateAgentConfig).not.toHaveBeenCalled();
     expect(activateAgentPromptVersion).not.toHaveBeenCalled();
   });
 });

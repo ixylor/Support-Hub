@@ -103,24 +103,36 @@ export async function getAgentConfig(key: AgentKey): Promise<AgentConfig> {
 
 export async function updateAgentConfig(
   key: AgentKey,
-  input: { aiDeploymentId: string | null; temperature: number; isEnabled: boolean }
+  input: { aiDeploymentId?: string | null; temperature?: number; isEnabled?: boolean }
 ): Promise<void> {
   if (
-    !Number.isFinite(input.temperature) ||
-    input.temperature < MIN_TEMPERATURE ||
-    input.temperature > MAX_TEMPERATURE
+    input.temperature !== undefined &&
+    (!Number.isFinite(input.temperature) ||
+      input.temperature < MIN_TEMPERATURE ||
+      input.temperature > MAX_TEMPERATURE)
   ) {
     throw new Error(
       `Agent temperature must be between ${MIN_TEMPERATURE} and ${MAX_TEMPERATURE}, got ${input.temperature}.`
     );
   }
 
+  const updates: { aiDeploymentId?: string | null; temperature?: string; isEnabled?: boolean } = {};
+  if (input.aiDeploymentId !== undefined) {
+    updates.aiDeploymentId = input.aiDeploymentId;
+  }
+  if (input.temperature !== undefined) {
+    updates.temperature = String(input.temperature);
+  }
+  if (input.isEnabled !== undefined) {
+    updates.isEnabled = input.isEnabled;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return;
+  }
+
   await db
     .update(agents)
-    .set({
-      aiDeploymentId: input.aiDeploymentId,
-      temperature: String(input.temperature),
-      isEnabled: input.isEnabled,
-    })
+    .set(updates)
     .where(eq(agents.key, key));
 }
