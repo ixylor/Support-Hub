@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RiMoreLine } from "@remixicon/react";
 import {
@@ -71,6 +71,28 @@ const STATUS_LABELS: Record<string, string> = {
 function isStale(entry: EntryView): boolean {
   if (entry.status !== "processing") return false;
   return Date.now() - new Date(entry.updatedAt).getTime() > STALE_THRESHOLD_MS;
+}
+
+// A fixed locale and time zone so the server render and the client's first
+// render produce identical text — toLocaleString() depends on the runtime's
+// default locale and time zone, which differ between the Node process doing
+// SSR and the browser doing hydration, and React discards the whole tree on
+// a text mismatch. Upgraded to the admin's own local time after mount, once
+// there is no longer a server-rendered version to match.
+const UPDATED_AT_FALLBACK_FORMAT = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
+function UpdatedAtCell({ value }: { value: string }) {
+  const [display, setDisplay] = useState(() => `${UPDATED_AT_FALLBACK_FORMAT.format(new Date(value))} UTC`);
+
+  useEffect(() => {
+    setDisplay(new Date(value).toLocaleString());
+  }, [value]);
+
+  return <>{display}</>;
 }
 
 function ViewContentDialog({ entryId, title }: { entryId: string; title: string }) {
@@ -294,7 +316,9 @@ export function DocumentList({
                     </Badge>
                   </TableCell>
                   <TableCell>{entry.chunkCount}</TableCell>
-                  <TableCell>{new Date(entry.updatedAt).toLocaleString()}</TableCell>
+                  <TableCell>
+                    <UpdatedAtCell value={entry.updatedAt} />
+                  </TableCell>
                   <TableCell>
                     <RowActions entry={entry} />
                   </TableCell>

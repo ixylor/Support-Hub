@@ -42,6 +42,10 @@ const testServerUrl = `http://localhost:${testServerPort}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // Seeds the accounts every spec signs in with, once, before any worker
+  // starts — see e2e/global-setup.ts for why per-spec sign-up alone races
+  // against a freshly truncated database.
+  globalSetup: "./e2e/global-setup.ts",
   webServer: [
     {
       name: "Next server",
