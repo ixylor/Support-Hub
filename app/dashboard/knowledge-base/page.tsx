@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth/server";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { knowledgeBaseReadiness, listEntries, listTags } from "@/lib/kb/entries";
 import { DocumentList } from "./document-list";
+import { SearchBox } from "./search-box";
 
 export default async function KnowledgeBasePage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -40,6 +41,16 @@ export default async function KnowledgeBasePage() {
         knownTags={tags}
         canUpload={readiness.ready}
       />
+
+      <div className="space-y-2">
+        <div>
+          <h2 className="text-base font-semibold">Test retrieval</h2>
+          <p className="text-muted-foreground text-sm">
+            Runs the same query the AI would run.
+          </p>
+        </div>
+        <SearchBox knownTags={tags} />
+      </div>
     </div>
   );
 }
