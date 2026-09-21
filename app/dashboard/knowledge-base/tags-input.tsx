@@ -1,18 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useId, useState } from "react";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RiCloseLine } from "@remixicon/react";
-import { cn } from "cn";
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "@/components/ui/combobox";
+
+function normalize(raw: string): string {
+  return raw.trim().toLowerCase();
+}
 
 // A free-solo multi-select: known tags are offered as suggestions, but
 // anything typed and confirmed becomes a tag, matching how entries are
@@ -28,92 +32,90 @@ export function TagsInput({
   knownTags: string[];
   label?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const inputId = useId();
+  const anchorRef = useComboboxAnchor();
   const [query, setQuery] = useState("");
+  const trimmedQuery = normalize(query);
 
-  function normalize(raw: string): string {
-    return raw.trim().toLowerCase();
-  }
+  const suggestions = knownTags.filter(
+    (tag) => !value.includes(tag) && tag.includes(trimmedQuery)
+  );
+
+  // The typed tag leads the list so it is the auto-highlighted Enter target,
+  // unless it is already offered as a suggestion or already selected.
+  const creatable =
+    trimmedQuery !== "" && !suggestions.includes(trimmedQuery) && !value.includes(trimmedQuery)
+      ? trimmedQuery
+      : null;
+  const items = creatable === null ? suggestions : [creatable, ...suggestions];
 
   function addTag(raw: string) {
     const tag = normalize(raw);
-    if (tag === "" || value.includes(tag)) {
-      setQuery("");
-      return;
-    }
-    onChange([...value, tag]);
     setQuery("");
+    if (tag === "" || value.includes(tag)) return;
+    onChange([...value, tag]);
   }
-
-  function removeTag(tag: string) {
-    onChange(value.filter((existing) => existing !== tag));
-  }
-
-  const suggestions = knownTags.filter(
-    (tag) => !value.includes(tag) && tag.includes(normalize(query))
-  );
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </span>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {value.map((tag) => (
-          <Badge key={tag} variant="secondary" className="gap-1 px-2 py-1">
-            {tag}
-            <button
-              type="button"
-              aria-label={`Remove tag ${tag}`}
-              onClick={() => removeTag(tag)}
-              className="opacity-60 hover:opacity-100"
+    <Combobox
+      items={items}
+      filter={null}
+      autoHighlight
+      multiple
+      value={value}
+      onValueChange={onChange}
+      inputValue={query}
+      // Only typing keeps the query; picking a tag, clearing, or closing the
+      // list resets it so the next tag starts from an empty field.
+      onInputValueChange={(next, details) => {
+        setQuery(details.reason === "input-change" ? next : "");
+      }}
+    >
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor={inputId}
+          className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+        >
+          {label}
+        </label>
+        <ComboboxValue>
+          {(selected: string[]) => (
+            <ComboboxChips
+              ref={anchorRef}
+              aria-label={selected.length > 0 ? `Selected ${label.toLowerCase()}` : undefined}
             >
-              <RiCloseLine className="size-3" />
-            </button>
-          </Badge>
-        ))}
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger
-            render={
-              <InputGroup className={cn("w-48 border-b border-transparent border-b-input")}>
-                <InputGroupInput
-                  placeholder="Add tag..."
-                  value={query}
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    setOpen(true);
-                  }}
-                  onFocus={() => setOpen(true)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === ",") {
-                      event.preventDefault();
-                      addTag(query);
-                    } else if (event.key === "Backspace" && query === "" && value.length > 0) {
-                      removeTag(value[value.length - 1]);
-                    }
-                  }}
-                />
-              </InputGroup>
-            }
-          />
-          <PopoverContent className="w-48 p-0" align="start">
-            <Command shouldFilter={false}>
-              <CommandList>
-                <CommandEmpty>
-                  {query.trim() === "" ? "Type to add a tag." : `Press Enter to add "${query.trim()}".`}
-                </CommandEmpty>
-                <CommandGroup>
-                  {suggestions.map((tag) => (
-                    <CommandItem key={tag} value={tag} onSelect={() => addTag(tag)}>
-                      {tag}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+              {selected.map((tag) => (
+                <ComboboxChip
+                  key={tag}
+                  aria-label={tag}
+                  aria-description="Press Backspace or Delete to remove"
+                >
+                  {tag}
+                </ComboboxChip>
+              ))}
+              <ComboboxChipsInput
+                id={inputId}
+                placeholder={selected.length > 0 ? "" : "Add tag..."}
+                onKeyDown={(event) => {
+                  if (event.key !== ",") return;
+                  event.preventDefault();
+                  addTag(query);
+                }}
+              />
+            </ComboboxChips>
+          )}
+        </ComboboxValue>
       </div>
-    </div>
+      <ComboboxContent anchor={anchorRef}>
+        <ComboboxEmpty>Type to add a tag.</ComboboxEmpty>
+        <ComboboxList>
+          {(item: string) => (
+            <ComboboxItem key={item} value={item}>
+              {item === creatable ? `Create "${item}"` : item}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }

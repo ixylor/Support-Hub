@@ -12,7 +12,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,46 +94,44 @@ function UpdatedAtCell({ value }: { value: string }) {
   return <>{display}</>;
 }
 
-function ViewContentDialog({ entryId, title }: { entryId: string; title: string }) {
-  const [open, setOpen] = useState(false);
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface ViewContentState {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  content: string | null;
+}
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/kb/entries/${entryId}`);
-      const payload = (await response.json()) as { content?: string; error?: string };
-      if (!response.ok) throw new Error(payload.error ?? "Failed to load.");
-      setContent(payload.content ?? "");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+const CLOSED_VIEW_CONTENT: ViewContentState = {
+  open: false,
+  loading: false,
+  error: null,
+  content: null,
+};
 
+// Base UI unmounts the menu popup when an item is clicked, so this dialog is
+// rendered as a sibling of the menu and opened imperatively — nesting it in
+// the menu content would tear it down at the moment it opens.
+function ViewContentDialog({
+  title,
+  state,
+  onOpenChange,
+}: {
+  title: string;
+  state: ViewContentState;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) void load();
-      }}
-    >
-      <DropdownMenuItem onClick={() => setOpen(true)}>View extracted text</DropdownMenuItem>
+    <Dialog open={state.open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        {loading ? (
+        {state.loading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : error ? (
-          <p className="text-sm text-destructive">{error}</p>
+        ) : state.error ? (
+          <p className="text-sm text-destructive">{state.error}</p>
         ) : (
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm">{content}</pre>
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-sm">{state.content}</pre>
         )}
       </DialogContent>
     </Dialog>
@@ -145,7 +142,21 @@ function RowActions({ entry }: { entry: EntryView }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<ViewContentState>(CLOSED_VIEW_CONTENT);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const canRetry = entry.status === "failed" || isStale(entry);
+
+  async function handleView() {
+    setView({ open: true, loading: true, error: null, content: null });
+    try {
+      const response = await fetch(`/api/kb/entries/${entry.id}`);
+      const payload = (await response.json()) as { content?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Failed to load.");
+      setView((prev) => ({ ...prev, loading: false, content: payload.content ?? "" }));
+    } catch (err) {
+      setView((prev) => ({ ...prev, loading: false, error: (err as Error).message }));
+    }
+  }
 
   async function handleRetry() {
     setBusy(true);
@@ -178,7 +189,7 @@ function RowActions({ entry }: { entry: EntryView }) {
   }
 
   return (
-    <AlertDialog>
+    <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -189,12 +200,17 @@ function RowActions({ entry }: { entry: EntryView }) {
         />
         <DropdownMenuContent>
           {canRetry ? <DropdownMenuItem onClick={handleRetry}>Retry</DropdownMenuItem> : null}
-          <ViewContentDialog entryId={entry.id} title={entry.title} />
-          <AlertDialogTrigger render={<DropdownMenuItem variant="destructive" />}>
+          <DropdownMenuItem onClick={handleView}>View extracted text</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
             Delete
-          </AlertDialogTrigger>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ViewContentDialog
+        title={entry.title}
+        state={view}
+        onOpenChange={(open) => setView((prev) => (open ? { ...prev, open } : CLOSED_VIEW_CONTENT))}
+      />
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &ldquo;{entry.title}&rdquo;?</AlertDialogTitle>

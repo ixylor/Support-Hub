@@ -104,6 +104,44 @@ test.describe("knowledge base", () => {
     await db.delete(kbEntries).where(eq(kbEntries.title, "Warranty policy"));
   });
 
+  test("an admin adds a free-form tag to the retrieval filter", async ({ page }) => {
+    await signIn(page, adminEmail);
+    await page.goto("/dashboard/knowledge-base");
+
+    const tagInput = page.getByRole("combobox", { name: "Filter by tags" });
+    await tagInput.fill("warranty");
+    await tagInput.press("Enter");
+
+    await expect(page.getByText("warranty", { exact: true })).toBeVisible();
+    await expect(tagInput).toHaveValue("");
+  });
+
+  test("an admin views the extracted text of a document", async ({ page }) => {
+    const [admin] = await db.select({ id: user.id }).from(user).where(eq(user.email, adminEmail));
+    const title = `Seeded for preview ${randomUUID()}`;
+    const content = "Extracted body text for the preview dialog.";
+    await db.insert(kbEntries).values({
+      title,
+      sourceType: "pdf",
+      status: "ready",
+      content,
+      uploadedByUserId: admin.id,
+    });
+
+    await signIn(page, adminEmail);
+    await page.goto("/dashboard/knowledge-base");
+
+    const row = page.getByRole("row", { name: new RegExp(title) });
+    await row.getByRole("button", { name: "Actions" }).click();
+    await page.getByRole("menuitem", { name: "View extracted text" }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(content)).toBeVisible();
+
+    await db.delete(kbEntries).where(eq(kbEntries.title, title));
+  });
+
   test("an admin deletes a document", async ({ page }) => {
     // Seeded directly rather than relying on the upload test's output: that
     // test skips when no AI provider is configured, and this one shouldn't
