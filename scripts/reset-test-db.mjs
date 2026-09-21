@@ -110,6 +110,67 @@ export function assertSafeToReset(testUrlRaw, devUrlRaw) {
   return testIdentity;
 }
 
+// Maps pg_constraint's single-character action codes to the SQL keywords
+// ALTER TABLE ... ADD CONSTRAINT expects, so a captured FK can be recreated
+// with the same ON DELETE/ON UPDATE behavior it actually had — see
+// findForeignKey below.
+const FK_ACTION_KEYWORDS = {
+  a: "NO ACTION",
+  r: "RESTRICT",
+  c: "CASCADE",
+  n: "SET NULL",
+  d: "SET DEFAULT",
+};
+
+/**
+ * Looks up the single-column foreign key constraint on `table.column`,
+ * reading it from pg_constraint rather than assuming a name: drizzle-kit
+ * derives constraint names from table/column names, so if a later migration
+ * renames either side, the name this script would otherwise hardcode goes
+ * stale silently (DROP CONSTRAINT IF EXISTS no-ops, the later ADD CONSTRAINT
+ * hard-fails). Reading the constraint that's actually there — including its
+ * referenced table/column and its ON DELETE/ON UPDATE actions — means this
+ * script tracks whatever the schema says instead of duplicating it.
+ * Throws if no such constraint exists, since a caller that expects one to be
+ * there and finds none should fail loudly, not leave the database silently
+ * wrong.
+ */
+async function findForeignKey(sql, tableName, columnName) {
+  const [row] = await sql`
+    SELECT
+      con.conname AS constraint_name,
+      ref_table.relname AS referenced_table,
+      ref_col.attname AS referenced_column,
+      con.confdeltype AS on_delete,
+      con.confupdtype AS on_update
+    FROM pg_constraint con
+    JOIN pg_class tbl ON tbl.oid = con.conrelid
+    JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+    JOIN pg_attribute col ON col.attrelid = tbl.oid AND col.attnum = ANY(con.conkey)
+    JOIN pg_class ref_table ON ref_table.oid = con.confrelid
+    JOIN pg_attribute ref_col ON ref_col.attrelid = ref_table.oid AND ref_col.attnum = ANY(con.confkey)
+    WHERE con.contype = 'f'
+      AND ns.nspname = 'public'
+      AND tbl.relname = ${tableName}
+      AND col.attname = ${columnName}
+  `;
+
+  if (!row) {
+    throw new Error(
+      `Expected a foreign key on "${tableName}"."${columnName}" but found none — ` +
+        "the schema may have changed without this script being updated."
+    );
+  }
+
+  return {
+    constraintName: row.constraint_name,
+    referencedTable: row.referenced_table,
+    referencedColumn: row.referenced_column,
+    onDelete: FK_ACTION_KEYWORDS[row.on_delete] ?? "NO ACTION",
+    onUpdate: FK_ACTION_KEYWORDS[row.on_update] ?? "NO ACTION",
+  };
+}
+
 /**
  * Confirms, using the live connection itself rather than the URL we parsed
  * it from, that we are actually in a database whose name looks disposable.
@@ -164,7 +225,11 @@ async function main() {
     // agents and agent_prompt_versions are seeded by migration 0006, not by
     // application code, which is why they are preserved here rather than
     // truncated and re-created: there's no app-code seed step to re-run them
-    // from.
+    // from. (Per-file normalization of these rows — reactivating version 1,
+    // clearing test mutations — lives in vitest.setup.ts, not here: this
+    // script only runs once per `pnpm test` invocation, but a test file
+    // mutating a shared row needs the next test *file* to see a clean
+    // baseline too, not just the next full suite run.)
     //
     // Excluding them from the table list below isn't enough on its own:
     // Postgres's TRUNCATE ... CASCADE truncates every table with an FK to a
@@ -178,21 +243,30 @@ async function main() {
     // via agent_prompt_versions' own ON DELETE CASCADE, into
     // agent_prompt_versions again), regardless of any exclusion list.
     // Dropping both FKs for the duration of the truncate severs those
-    // chains; they're recreated immediately after, once the columns they
-    // constrain have been nulled so the recreated constraints have nothing
-    // to validate against a row TRUNCATE is about to remove.
+    // chains; they're recreated immediately after (using whatever
+    // findForeignKey actually found, not a hardcoded name), once the
+    // columns they constrain have been nulled so the recreated constraints
+    // have nothing to validate against a row TRUNCATE is about to remove.
     const hasAgentsCatalog = tables.some((t) => t.table_name === "agents");
     const excludedFromTruncate = hasAgentsCatalog ? ["agents", "agent_prompt_versions"] : [];
 
+    let agentsAiDeploymentFk;
+    let agentPromptVersionsUpdatedByFk;
+
     if (hasAgentsCatalog) {
-      await sql`
-        ALTER TABLE "agents"
-        DROP CONSTRAINT IF EXISTS "agents_ai_deployment_id_ai_deployments_id_fk"
-      `;
-      await sql`
-        ALTER TABLE "agent_prompt_versions"
-        DROP CONSTRAINT IF EXISTS "agent_prompt_versions_updated_by_user_id_user_id_fk"
-      `;
+      agentsAiDeploymentFk = await findForeignKey(sql, "agents", "ai_deployment_id");
+      agentPromptVersionsUpdatedByFk = await findForeignKey(
+        sql,
+        "agent_prompt_versions",
+        "updated_by_user_id"
+      );
+
+      await sql.unsafe(
+        `ALTER TABLE "agents" DROP CONSTRAINT "${agentsAiDeploymentFk.constraintName}"`
+      );
+      await sql.unsafe(
+        `ALTER TABLE "agent_prompt_versions" DROP CONSTRAINT "${agentPromptVersionsUpdatedByFk.constraintName}"`
+      );
       await sql`UPDATE "agents" SET "ai_deployment_id" = NULL`;
       await sql`UPDATE "agent_prompt_versions" SET "updated_by_user_id" = NULL`;
     }
@@ -214,31 +288,23 @@ async function main() {
       console.log(`Truncated ${truncatable.length} table(s) in the public schema of ${testIdentity.database}.`);
     }
 
-    // Normalize the preserved agent catalog back to a known baseline, so
-    // runs stay independent of whatever an earlier test file left behind:
-    // drop any extra prompt versions a test created, reactivate the seeded
-    // version 1 (with no updater, matching how migration 0006 inserted it),
-    // and re-enable every agent. ai_deployment_id is already null from
-    // before the truncate. temperature is deliberately left alone — per-
-    // agent defaults differ and a later task's tests manage it.
+    // Recreate both FKs from what findForeignKey actually captured — same
+    // constraint name, referenced table/column and ON DELETE/ON UPDATE
+    // actions the schema had before they were severed above — rather than
+    // assuming NO ACTION or re-deriving a name. Row-level normalization
+    // (reactivating version 1, re-enabling agents, etc.) happens per test
+    // file in vitest.setup.ts, not here — see the comment above.
     if (hasAgentsCatalog) {
-      await sql`
-        ALTER TABLE "agents"
-        ADD CONSTRAINT "agents_ai_deployment_id_ai_deployments_id_fk"
-        FOREIGN KEY ("ai_deployment_id") REFERENCES "ai_deployments"("id")
-      `;
-      await sql`
-        ALTER TABLE "agent_prompt_versions"
-        ADD CONSTRAINT "agent_prompt_versions_updated_by_user_id_user_id_fk"
-        FOREIGN KEY ("updated_by_user_id") REFERENCES "user"("id")
-      `;
-      await sql`DELETE FROM "agent_prompt_versions" WHERE "version" > 1`;
-      await sql`
-        UPDATE "agent_prompt_versions"
-        SET "is_active" = true, "updated_by_user_id" = NULL
-        WHERE "version" = 1
-      `;
-      await sql`UPDATE "agents" SET "is_enabled" = true`;
+      await sql.unsafe(
+        `ALTER TABLE "agents" ADD CONSTRAINT "${agentsAiDeploymentFk.constraintName}" ` +
+          `FOREIGN KEY ("ai_deployment_id") REFERENCES "${agentsAiDeploymentFk.referencedTable}"("${agentsAiDeploymentFk.referencedColumn}") ` +
+          `ON DELETE ${agentsAiDeploymentFk.onDelete} ON UPDATE ${agentsAiDeploymentFk.onUpdate}`
+      );
+      await sql.unsafe(
+        `ALTER TABLE "agent_prompt_versions" ADD CONSTRAINT "${agentPromptVersionsUpdatedByFk.constraintName}" ` +
+          `FOREIGN KEY ("updated_by_user_id") REFERENCES "${agentPromptVersionsUpdatedByFk.referencedTable}"("${agentPromptVersionsUpdatedByFk.referencedColumn}") ` +
+          `ON DELETE ${agentPromptVersionsUpdatedByFk.onDelete} ON UPDATE ${agentPromptVersionsUpdatedByFk.onUpdate}`
+      );
     }
 
     // Deliberately NOT truncating the pgboss schema. pg-boss owns that schema
