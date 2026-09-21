@@ -22,6 +22,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.ts"],
     exclude: ["node_modules", "dist", ".next", "e2e"],
     // Injected into each test worker's process.env, overriding whatever

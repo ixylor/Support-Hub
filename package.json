@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:test": "node scripts/migrate-test.mjs",
+    "db:reset:test": "node scripts/reset-test-db.mjs",
     "worker": "tsx lib/jobs/worker.ts"
   },
   "dependencies": {
