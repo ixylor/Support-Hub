@@ -28,6 +28,7 @@ describe("parser registry", () => {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ]
     ).toBe("docx");
+    expect(SUPPORTED_CONTENT_TYPES["application/pdf"]).toBe("pdf");
   });
 });
 

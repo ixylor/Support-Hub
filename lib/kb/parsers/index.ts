@@ -1,17 +1,19 @@
 import { docxParser } from "./docx";
+import { pdfParser } from "./pdf";
 import { textParser } from "./text";
 import type { DocumentParser, KbSourceType } from "./parser";
 
 export type { DocumentParser, KbSourceType } from "./parser";
 
 export const SUPPORTED_CONTENT_TYPES: Record<string, KbSourceType> = {
+  "application/pdf": "pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "text/plain": "text",
   "text/markdown": "markdown",
   "text/x-markdown": "markdown",
 };
 
-const PARSERS: DocumentParser[] = [docxParser, textParser];
+const PARSERS: DocumentParser[] = [pdfParser, docxParser, textParser];
 
 // Browsers send "text/plain; charset=utf-8"; the parameters are irrelevant to
 // which parser applies.
