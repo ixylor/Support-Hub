@@ -30,7 +30,13 @@ async function start(): Promise<PgBoss> {
 export async function getBoss(): Promise<PgBoss> {
   if (instance) return instance;
   // Guard against two concurrent callers both running the migration.
-  starting ??= start();
+  starting ??= start().catch((error) => {
+    // A failed start (e.g. Postgres not accepting connections yet) must not
+    // poison every later call with the same cached rejection — clear it so
+    // the next getBoss() genuinely retries.
+    starting = null;
+    throw error;
+  });
   return starting;
 }
 

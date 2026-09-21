@@ -50,6 +50,10 @@ export async function getAzureCredentials(): Promise<AzureCredentials | null> {
     // Return null only for undecryptable stored secrets. Other errors
     // (database failures, wrong encryption key) should propagate.
     if (error instanceof SecretDecryptionError) {
+      // A wrong or rotated APP_ENCRYPTION_KEY looks identical to corrupt
+      // ciphertext from here, so log it — otherwise this surfaces to the
+      // admin as "provider not configured", which points at the wrong fix.
+      console.error("Failed to decrypt a stored Azure OpenAI credential:", error.message);
       return null;
     }
     throw error;

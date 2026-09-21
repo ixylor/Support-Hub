@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { embedTexts } from "@/lib/ai/embeddings";
+import { normalizeTags } from "./tags";
 
 export interface KbSearchResult {
   chunkId: string;
@@ -29,7 +30,10 @@ export async function searchKnowledgeBase(input: {
   if (query === "") return [];
 
   const limit = input.limit ?? DEFAULT_LIMIT;
-  const tags = input.tags?.length ? input.tags : null;
+  // Callers may pass tags straight from user input (e.g. an upcoming skill),
+  // not only the already-normalized values listTags() returns.
+  const normalizedTags = input.tags ? normalizeTags(input.tags) : [];
+  const tags = normalizedTags.length ? normalizedTags : null;
 
   const { embeddings } = await embedTexts([query]);
   const queryVector = JSON.stringify(embeddings[0]);

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 
 export function kbStorageDir(): string {
@@ -53,4 +53,27 @@ export async function readKbFile(storagePath: string): Promise<Buffer> {
   }
 
   return readFile(resolved);
+}
+
+// Same path validation as readKbFile — never unlink based on the stored
+// string alone. A file that is already gone is not an error: deleting an
+// entry whose upload was already removed by hand must still succeed.
+export async function deleteKbFile(storagePath: string): Promise<void> {
+  const baseDir = resolve(kbStorageDir());
+  const resolved = resolve(storagePath);
+  const relativePath = relative(baseDir, resolved);
+
+  if (relativePath.startsWith("..") || relativePath === "") {
+    throw new Error(
+      `Refusing to delete a path outside the knowledge base directory: ${storagePath}`
+    );
+  }
+
+  try {
+    await unlink(resolved);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
 }

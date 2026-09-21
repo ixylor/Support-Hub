@@ -139,4 +139,12 @@ describe("searchKnowledgeBase", () => {
 
     expect(await searchKnowledgeBase({ query: "refunds", tags: ["nonexistent"] })).toEqual([]);
   });
+
+  it("normalizes an unnormalized tag filter before matching", async () => {
+    mockQueryVector(axis(0));
+
+    const results = await searchKnowledgeBase({ query: "refunds", tags: [" Billing "] });
+
+    expect(results.some((r) => r.entryId === billingEntryId)).toBe(true);
+  });
 });

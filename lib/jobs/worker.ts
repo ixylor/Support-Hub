@@ -16,7 +16,12 @@ async function main(): Promise<void> {
     process.on(signal, () => {
       // Graceful stop lets in-flight jobs finish rather than returning them to
       // the queue for a needless retry.
-      void stopBoss().then(() => process.exit(0));
+      void stopBoss()
+        .then(() => process.exit(0))
+        .catch((error) => {
+          console.error("Error while stopping worker:", error);
+          process.exit(1);
+        });
     });
   }
 }

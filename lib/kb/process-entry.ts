@@ -27,6 +27,16 @@ async function extractContent(entry: typeof kbEntries.$inferSelect): Promise<str
   return parser.extract(buffer);
 }
 
+// Shared by the normal permanent-failure path below and by the job handler,
+// which calls this once pg-boss has exhausted its retries on a
+// RetryableAiError so the failure lands on the entry instead of only in logs.
+export async function markKbEntryFailed(entryId: string, message: string): Promise<void> {
+  await db
+    .update(kbEntries)
+    .set({ status: "failed", errorMessage: message })
+    .where(eq(kbEntries.id, entryId));
+}
+
 export async function processKbEntry(entryId: string): Promise<void> {
   const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, entryId)).limit(1);
   if (!entry) return;
@@ -90,9 +100,6 @@ export async function processKbEntry(entryId: string): Promise<void> {
         ? error.message
         : (error as Error).message || "Processing failed.";
 
-    await db
-      .update(kbEntries)
-      .set({ status: "failed", errorMessage: message })
-      .where(eq(kbEntries.id, entryId));
+    await markKbEntryFailed(entryId, message);
   }
 }

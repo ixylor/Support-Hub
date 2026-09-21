@@ -4,7 +4,8 @@ import { kbChunks, kbEntries } from "@/lib/db/schema";
 import { getActiveDeployment, getAzureCredentials } from "@/lib/ai/config";
 import { QUEUES, enqueue } from "@/lib/jobs/boss";
 import { SUPPORTED_CONTENT_TYPES, normalizeContentType } from "./parsers";
-import { saveKbFile } from "./storage";
+import { deleteKbFile, saveKbFile } from "./storage";
+import { normalizeTags } from "./tags";
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -17,13 +18,6 @@ export interface KbEntrySummary {
   errorMessage: string | null;
   chunkCount: number;
   updatedAt: Date;
-}
-
-// Tags are compared by equality in retrieval filters, so they are normalized on
-// the way in rather than at every read site.
-function normalizeTags(tags: string[]): string[] {
-  const normalized = tags.map((tag) => tag.trim().toLowerCase()).filter((tag) => tag !== "");
-  return [...new Set(normalized)].sort();
 }
 
 function requireTitle(title: string): string {
@@ -146,8 +140,19 @@ export async function listTags(): Promise<string[]> {
 }
 
 export async function deleteEntry(id: string): Promise<void> {
-  // kb_chunks cascades on the foreign key, so one delete is enough.
+  const [entry] = await db
+    .select({ storagePath: kbEntries.storagePath })
+    .from(kbEntries)
+    .where(eq(kbEntries.id, id));
+
+  // kb_chunks cascades on the foreign key, so one delete is enough for the rows.
   await db.delete(kbEntries).where(eq(kbEntries.id, id));
+
+  // Articles have no storagePath; an uploaded file does and would otherwise
+  // be left behind on disk with nothing left in the database to point at it.
+  if (entry?.storagePath) {
+    await deleteKbFile(entry.storagePath);
+  }
 }
 
 export async function requeueEntry(id: string): Promise<void> {

@@ -124,7 +124,7 @@ describe("processKbEntry", () => {
     expect(entry.errorMessage).toMatch(/no readable text/i);
   });
 
-  it("rethrows a retryable error and leaves the entry processing", async () => {
+  it("rethrows a retryable error and leaves the entry processing for pg-boss to retry", async () => {
     vi.spyOn(embeddings, "embedTexts").mockRejectedValue(new RetryableAiError("429"));
     const entryId = await createArticle("Refunds are issued within fourteen days.");
 

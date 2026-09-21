@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,6 +48,15 @@ describe("knowledge base entries", () => {
     await db.delete(aiDeployments);
     await db.delete(appSecrets);
   });
+
+  async function pathExists(path: string): Promise<boolean> {
+    try {
+      await access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async function configureProvider(): Promise<void> {
     await setAzureCredentials(
@@ -219,5 +228,49 @@ describe("knowledge base entries", () => {
 
     expect(await db.select().from(kbEntries).where(eq(kbEntries.id, id))).toHaveLength(0);
     expect(await db.select().from(kbChunks).where(eq(kbChunks.kbEntryId, id))).toHaveLength(0);
+  });
+
+  it("deletes the uploaded file when its entry is deleted", async () => {
+    const id = await createUploadedEntry({
+      title: "Refund policy",
+      tags: [],
+      filename: "policy.md",
+      contentType: "text/markdown",
+      content: Buffer.from("# Refunds"),
+      uploadedByUserId: adminId,
+    });
+    const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, id));
+    const storagePath = entry.storagePath!;
+    expect(await pathExists(storagePath)).toBe(true);
+
+    await deleteEntry(id);
+
+    expect(await pathExists(storagePath)).toBe(false);
+  });
+
+  it("succeeds deleting an entry whose file is already gone", async () => {
+    const id = await createUploadedEntry({
+      title: "Refund policy",
+      tags: [],
+      filename: "policy.md",
+      contentType: "text/markdown",
+      content: Buffer.from("# Refunds"),
+      uploadedByUserId: adminId,
+    });
+    const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, id));
+    await rm(entry.storagePath!);
+
+    await expect(deleteEntry(id)).resolves.toBeUndefined();
+  });
+
+  it("deletes an article with no storagePath without error", async () => {
+    const id = await createArticleEntry({
+      title: "Article",
+      tags: [],
+      body: "x",
+      uploadedByUserId: adminId,
+    });
+
+    await expect(deleteEntry(id)).resolves.toBeUndefined();
   });
 });
