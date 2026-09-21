@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -16,7 +15,7 @@ vi.mock("@/lib/ingestion/ingest-message", () => ({
   ingestMessage: vi.fn(),
 }));
 
-describe("POST /api/cron/poll-mailbox", () => {
+describe("pollMailboxOnce", () => {
   let userId: string;
 
   beforeAll(async () => {
@@ -24,10 +23,6 @@ describe("POST /api/cron/poll-mailbox", () => {
       body: { email: `cron-test-${crypto.randomUUID()}@example.com`, password: "x".repeat(16), name: "Seed" },
     });
     userId = result.user.id;
-  });
-
-  beforeEach(() => {
-    vi.stubEnv("CRON_SECRET", "test-secret");
   });
 
   afterEach(async () => {
@@ -39,26 +34,12 @@ describe("POST /api/cron/poll-mailbox", () => {
     await db.delete(mailboxConnections);
   });
 
-  it("rejects requests without the correct secret", async () => {
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", { method: "POST" });
-
-    const response = await POST(request);
-
-    expect(response.status).toBe(401);
-  });
-
   it("does nothing when no mailbox is connected", async () => {
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
-      method: "POST",
-      headers: { "x-cron-secret": "test-secret" },
-    });
+    const { pollMailboxOnce } = await import("./poll-mailbox");
 
-    const response = await POST(request);
-    const body = await response.json();
+    const result = await pollMailboxOnce();
 
-    expect(body.ingested).toBe(0);
+    expect(result.ingested).toBe(0);
   });
 
   it("marks the connection as errored when token refresh fails", async () => {
@@ -82,13 +63,9 @@ describe("POST /api/cron/poll-mailbox", () => {
     await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
     await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
 
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
-      method: "POST",
-      headers: { "x-cron-secret": "test-secret" },
-    });
+    const { pollMailboxOnce } = await import("./poll-mailbox");
 
-    await POST(request);
+    await pollMailboxOnce();
 
     const [connection] = await db
       .select()
@@ -133,16 +110,11 @@ describe("POST /api/cron/poll-mailbox", () => {
     await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
     await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
 
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
-      method: "POST",
-      headers: { "x-cron-secret": "test-secret" },
-    });
+    const { pollMailboxOnce } = await import("./poll-mailbox");
 
-    const response = await POST(request);
-    const body = await response.json();
+    const result = await pollMailboxOnce();
 
-    expect(body.ingested).toBe(1);
+    expect(result.ingested).toBe(1);
     const [connection] = await db
       .select()
       .from(mailboxConnections)
@@ -208,18 +180,13 @@ describe("POST /api/cron/poll-mailbox", () => {
       .from(mailboxConnections)
       .where(eq(mailboxConnections.mailboxAddress, "support@example.com"));
 
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
-      method: "POST",
-      headers: { "x-cron-secret": "test-secret" },
-    });
+    const { pollMailboxOnce } = await import("./poll-mailbox");
 
-    const response = await POST(request);
-    const body = await response.json();
+    const result = await pollMailboxOnce();
 
     // First message fails, second succeeds -- but there's no consecutive
     // run of successes starting at index 0, so the cursor can't move.
-    expect(body.ingested).toBe(1);
+    expect(result.ingested).toBe(1);
     const [connection] = await db
       .select()
       .from(mailboxConnections)
@@ -288,19 +255,14 @@ describe("POST /api/cron/poll-mailbox", () => {
     await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
     await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
 
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
-      method: "POST",
-      headers: { "x-cron-secret": "test-secret" },
-    });
+    const { pollMailboxOnce } = await import("./poll-mailbox");
 
-    const response = await POST(request);
-    const body = await response.json();
+    const result = await pollMailboxOnce();
 
     // Message 1 succeeds, message 2 fails, message 3 succeeds. The cursor
     // should advance only to message 1's position, not to the batch end --
     // message 2 is retried and message 3 re-fetched (and deduped) next cycle.
-    expect(body.ingested).toBe(2);
+    expect(result.ingested).toBe(2);
     const [connection] = await db
       .select()
       .from(mailboxConnections)
@@ -329,18 +291,12 @@ describe("POST /api/cron/poll-mailbox", () => {
     await setSecret(clientIdSecretKey("microsoft"), "client-id", userId);
     await setSecret(clientSecretSecretKey("microsoft"), "client-secret", userId);
 
-    const { POST } = await import("./route");
-    const request = new NextRequest("http://localhost/api/cron/poll-mailbox", {
-      method: "POST",
-      headers: { "x-cron-secret": "test-secret" },
-    });
+    const { pollMailboxOnce } = await import("./poll-mailbox");
 
-    const response = await POST(request);
-    const body = await response.json();
+    const result = await pollMailboxOnce();
 
-    expect(response.status).toBe(200);
-    expect(body.ingested).toBe(0);
-    expect(body.reason).toBe("message fetch failed");
+    expect(result.ingested).toBe(0);
+    expect(result.reason).toBe("message fetch failed");
 
     const [connection] = await db
       .select()

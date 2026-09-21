@@ -1,10 +1,14 @@
 import "dotenv/config";
-import { getBoss, stopBoss } from "./boss";
+import { QUEUES, getBoss, stopBoss } from "./boss";
 import { registerHandlers } from "./handlers";
 
 async function main(): Promise<void> {
   const boss = await getBoss();
   await registerHandlers(boss);
+
+  // Every five minutes. pg-boss stores the schedule in its own tables, so this
+  // is idempotent across worker restarts.
+  await boss.schedule(QUEUES.mailboxPoll, "*/5 * * * *");
 
   console.log("Worker started.");
 
