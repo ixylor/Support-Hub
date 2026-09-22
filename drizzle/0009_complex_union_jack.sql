@@ -38,6 +38,5 @@ ALTER TABLE "workflow_settings" ADD CONSTRAINT "workflow_settings_updated_by_use
 CREATE UNIQUE INDEX "ticket_approvals_one_pending_per_thread" ON "ticket_approvals" USING btree ("graph_thread_id") WHERE "ticket_approvals"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "ticket_approvals_ticket_id_idx" ON "ticket_approvals" USING btree ("ticket_id");--> statement-breakpoint
 ALTER TABLE "llm_logs" ADD CONSTRAINT "llm_logs_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-DROP TABLE "ticket_ai_drafts";--> statement-breakpoint
 INSERT INTO "workflow_settings" ("is_enabled", "require_approval", "auto_send_min_confidence")
 VALUES (true, true, '0.8');
