@@ -9,15 +9,19 @@ import {
   kbChunks,
   kbEntries,
   mailboxConnections,
-  ticketApprovals,
+  ticketAiDrafts,
   ticketMessages,
   tickets,
-  workflowSettings,
 } from "./schema";
 import { user } from "@/lib/auth/schema";
-import { createTestTicket } from "@/lib/test-helpers/tickets";
 
 describe("domain schema", () => {
+  it("exposes the columns the AI pipeline phase will rely on", () => {
+    expect(Object.keys(ticketAiDrafts)).toEqual(
+      expect.arrayContaining(["graphThreadId", "agentPromptVersionId", "confidenceScore"])
+    );
+  });
+
   it("exposes the columns the review dashboard will rely on", () => {
     expect(Object.keys(tickets)).toEqual(
       expect.arrayContaining(["status", "category", "priority"])
@@ -231,88 +235,5 @@ describe("agents schema", () => {
     const cause = (thrown as { cause?: unknown }).cause;
     expect(cause).toBeInstanceOf(Error);
     expect((cause as Error).message).toMatch(/agent_prompt_versions_one_active_per_agent/);
-  });
-});
-
-describe("workflow schema", () => {
-  it("allows the triaged_out ticket status", async () => {
-    const ticketId = await createTestTicket({ status: "triaged_out" });
-    const [row] = await db
-      .select({ status: tickets.status })
-      .from(tickets)
-      .where(eq(tickets.id, ticketId));
-
-    expect(row.status).toBe("triaged_out");
-  });
-
-  it("refuses two pending approvals on one graph thread", async () => {
-    const ticketId = await createTestTicket({});
-
-    await db.insert(ticketApprovals).values({
-      ticketId,
-      graphThreadId: "thread-1",
-      kind: "send_email",
-      proposal: { draftId: "d-1" },
-      confidence: "0.9",
-      status: "pending",
-    });
-
-    let thrown: unknown;
-    try {
-      await db.insert(ticketApprovals).values({
-        ticketId,
-        graphThreadId: "thread-1",
-        kind: "close",
-        proposal: { sentMessageId: "m-1" },
-        confidence: "0.9",
-        status: "pending",
-      });
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(Error);
-    const cause = (thrown as { cause?: unknown }).cause;
-    expect(cause).toBeInstanceOf(Error);
-    expect((cause as Error).message).toMatch(/ticket_approvals_one_pending_per_thread/);
-  });
-
-  it("allows a second approval once the first is decided", async () => {
-    const ticketId = await createTestTicket({});
-
-    const [first] = await db
-      .insert(ticketApprovals)
-      .values({
-        ticketId,
-        graphThreadId: "thread-2",
-        kind: "send_email",
-        proposal: { draftId: "d-1" },
-        confidence: "0.9",
-        status: "pending",
-      })
-      .returning({ id: ticketApprovals.id });
-
-    await db
-      .update(ticketApprovals)
-      .set({ status: "decided", decision: "approve", decidedAt: new Date() })
-      .where(eq(ticketApprovals.id, first.id));
-
-    await expect(
-      db.insert(ticketApprovals).values({
-        ticketId,
-        graphThreadId: "thread-2",
-        kind: "close",
-        proposal: { sentMessageId: "m-1" },
-        confidence: "0.9",
-        status: "pending",
-      })
-    ).resolves.toBeDefined();
-  });
-
-  it("seeds exactly one workflow settings row", async () => {
-    const rows = await db.select().from(workflowSettings);
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0].requireApproval).toBe(true);
   });
 });

@@ -57,20 +57,6 @@
       "when": 1790044011637,
       "tag": "0007_outgoing_red_hulk",
       "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1790051085964,
-      "tag": "0008_drop_ticket_ai_drafts",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1790051123211,
-      "tag": "0009_complex_union_jack",
-      "breakpoints": true
     }
   ]
 }
