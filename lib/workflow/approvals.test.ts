@@ -9,6 +9,7 @@ import {
   ApprovalAlreadyPendingError,
   createApproval,
   decideApproval,
+  getApprovalForTicket,
   getPendingApproval,
   supersedePendingApprovals,
 } from "./approvals";
@@ -99,6 +100,23 @@ describe("approval gate", () => {
     const pending = await getPendingApproval(ticketId);
     expect(pending?.kind).toBe("escalate");
     expect(pending?.confidence).toBe(0.4);
+  });
+
+  it("looks up an approval only through its owning ticket", async () => {
+    const { id } = await createApproval({
+      ticketId,
+      graphThreadId: "t1",
+      kind: "send_email",
+      proposal,
+      confidence: 0.4,
+    });
+    const otherTicketId = await createTestTicket({});
+
+    await expect(getApprovalForTicket(ticketId, id)).resolves.toMatchObject({
+      id,
+      status: "pending",
+    });
+    await expect(getApprovalForTicket(otherTicketId, id)).resolves.toBeNull();
   });
 
   it("records a reviewer's edit", async () => {

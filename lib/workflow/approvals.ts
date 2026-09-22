@@ -28,6 +28,15 @@ export interface PendingApproval {
   createdAt: Date;
 }
 
+export interface ApprovalForTicket {
+  id: string;
+  status: "pending" | "decided" | "superseded";
+  decision: ApprovalDecision | null;
+  editedBody: string | null;
+  feedback: string | null;
+  overrideAction: string | null;
+}
+
 export class ApprovalAlreadyDecidedError extends Error {
   constructor() {
     super("This approval has already been decided.");
@@ -139,6 +148,26 @@ export async function getPendingApproval(ticketId: string): Promise<PendingAppro
     confidence: Number(row.confidence),
     createdAt: row.createdAt,
   };
+}
+
+export async function getApprovalForTicket(
+  ticketId: string,
+  approvalId: string
+): Promise<ApprovalForTicket | null> {
+  const [row] = await db
+    .select({
+      id: ticketApprovals.id,
+      status: ticketApprovals.status,
+      decision: ticketApprovals.decision,
+      editedBody: ticketApprovals.editedBody,
+      feedback: ticketApprovals.feedback,
+      overrideAction: ticketApprovals.overrideAction,
+    })
+    .from(ticketApprovals)
+    .where(and(eq(ticketApprovals.id, approvalId), eq(ticketApprovals.ticketId, ticketId)))
+    .limit(1);
+
+  return row ?? null;
 }
 
 export async function decideApproval(
