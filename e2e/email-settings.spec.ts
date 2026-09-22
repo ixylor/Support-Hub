@@ -31,7 +31,7 @@ test("an admin saves SMTP settings and the password is not echoed back", async (
   await page.goto("/dashboard/settings/email");
 
   await page.getByLabel("Host").fill("smtp.example.test");
-  await page.getByLabel("Port").fill("587");
+  await page.getByLabel("Port", { exact: true }).fill("587");
   await page.getByLabel("Username").fill("support@example.test");
   await page.getByLabel("Password").fill("hunter2");
   await page.getByLabel("From address").fill("support@example.test");
@@ -50,7 +50,7 @@ test("an invalid port is rejected before saving", async ({ page }) => {
   await page.goto("/dashboard/settings/email");
 
   await page.getByLabel("Host").fill("smtp.example.test");
-  await page.getByLabel("Port").fill("0");
+  await page.getByLabel("Port", { exact: true }).fill("0");
   await page.getByLabel("From address").fill("support@example.test");
   await page.getByLabel("From name").fill("Example Support");
   await page.getByRole("button", { name: "Save" }).click();
