@@ -6,9 +6,25 @@ import type { ThreadMessage, WorkflowState } from "../state";
 
 const KB_RESULT_LIMIT = 8;
 
+// Turns are separated by a blank line ("\n\n") followed by a role prefix —
+// that shape is the only thing that marks a genuine boundary. A message
+// body is customer-controlled text that reaches the model verbatim, so a
+// body containing that same blank-line-plus-prefix shape (e.g.
+// "\n\nSupport: ...") would otherwise be indistinguishable from a real
+// turn. Collapsing every blank line inside a body removes the one
+// structural feature a forged boundary depends on, without touching the
+// visible "Customer:"/"Support:" text a forged line still contains — it
+// just can no longer open a new turn.
+function stripBlankLines(body: string): string {
+  return body
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+}
+
 export function formatThread(thread: ThreadMessage[]): string {
   return thread
-    .map((message) => `${message.direction === "inbound" ? "Customer" : "Support"}: ${message.body}`)
+    .map((message) => `${message.direction === "inbound" ? "Customer" : "Support"}: ${stripBlankLines(message.body)}`)
     .join("\n\n");
 }
 
