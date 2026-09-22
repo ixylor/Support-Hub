@@ -100,6 +100,7 @@ describe("runAgent", () => {
 
   it("refuses to run a disabled agent", async () => {
     await db.update(agents).set({ isEnabled: false }).where(eq(agents.key, "drafter"));
+    const chat = fakeChat({ verdict: "ok" });
 
     await expect(
       runAgent({
@@ -109,9 +110,11 @@ describe("runAgent", () => {
         schema: SCHEMA,
         ticketId,
         graphThreadId: "thread-1",
-        chat: fakeChat({ verdict: "ok" }),
+        chat,
       })
     ).rejects.toBeInstanceOf(AgentDisabledError);
+    // isEnabled must be checked before the model is ever reached.
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it("fails when no deployment is resolvable", async () => {
