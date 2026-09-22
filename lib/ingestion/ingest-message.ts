@@ -1,6 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { attachments, ticketMessages, tickets } from "@/lib/db/schema";
+import { enqueue } from "@/lib/jobs/boss";
+import { QUEUES } from "@/lib/jobs/queues";
+import { supersedePendingApprovals } from "@/lib/workflow/approvals";
 import type { MailProvider, ProviderMessage } from "./provider";
 import { saveAttachment } from "./attachment-storage";
 
@@ -39,7 +42,7 @@ export async function ingestMessage(
     });
   }
 
-  await db.transaction(async (tx) => {
+  const ingested = await db.transaction(async (tx) => {
     const [existingTicket] = await tx
       .select({ id: tickets.id, status: tickets.status })
       .from(tickets)
@@ -52,6 +55,7 @@ export async function ingestMessage(
       .limit(1);
 
     let ticketId: string;
+    let isReply = Boolean(existingTicket);
     if (existingTicket) {
       ticketId = existingTicket.id;
       if (REOPENABLE_STATUSES.includes(existingTicket.status as (typeof REOPENABLE_STATUSES)[number])) {
@@ -91,6 +95,7 @@ export async function ingestMessage(
           );
         }
         ticketId = winner.id;
+        isReply = true;
       }
     }
 
@@ -111,7 +116,7 @@ export async function ingestMessage(
       // Another poll cycle ingested this message concurrently. The
       // attachments we just downloaded become orphaned files on disk,
       // which is harmless — nothing references them.
-      return;
+      return null;
     }
 
     if (storedAttachments.length > 0) {
@@ -122,5 +127,18 @@ export async function ingestMessage(
         }))
       );
     }
+
+    return { ticketId, isReply };
+  });
+
+  if (!ingested) return;
+
+  if (ingested.isReply) {
+    await supersedePendingApprovals(ingested.ticketId);
+  }
+
+  await enqueue(QUEUES.workflowRun, {
+    ticketId: ingested.ticketId,
+    trigger: ingested.isReply ? "customer_reply" : "new_ticket",
   });
 }

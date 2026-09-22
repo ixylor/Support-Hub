@@ -3,6 +3,8 @@
 export const QUEUES = {
   kbProcess: "kb.process",
   mailboxPoll: "mailbox.poll",
+  workflowRun: "workflow.run",
+  workflowResume: "workflow.resume",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -10,6 +12,8 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 export interface JobPayloads {
   "kb.process": { entryId: string };
   "mailbox.poll": Record<string, never>;
+  "workflow.run": { ticketId: string; trigger: "new_ticket" | "customer_reply" };
+  "workflow.resume": { approvalId: string };
 }
 
 export const RETRY_OPTIONS = {

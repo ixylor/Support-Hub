@@ -28,4 +28,15 @@ describe("job queue", () => {
     expect(job?.data).toEqual({ entryId });
     await boss.complete(QUEUES.kbProcess, job!.id);
   });
+
+  it("enqueues workflow runs with their trigger", async () => {
+    const boss = await getBoss();
+    const ticketId = crypto.randomUUID();
+
+    await enqueue(QUEUES.workflowRun, { ticketId, trigger: "customer_reply" });
+
+    const [job] = await boss.fetch(QUEUES.workflowRun, { batchSize: 1 });
+    expect(job?.data).toEqual({ ticketId, trigger: "customer_reply" });
+    await boss.complete(QUEUES.workflowRun, job!.id);
+  });
 });

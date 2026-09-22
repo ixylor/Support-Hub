@@ -1,7 +1,11 @@
 import type { JobWithMetadata, PgBoss } from "pg-boss";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { tickets } from "@/lib/db/schema";
 import { pollMailboxOnce } from "@/lib/ingestion/poll-mailbox";
 import { markKbEntryFailed, processKbEntry } from "@/lib/kb/process-entry";
-import { QUEUES } from "./queues";
+import { resumeWorkflowRun, startWorkflowRun } from "@/lib/workflow/run";
+import { QUEUES, type JobPayloads } from "./queues";
 
 // Exported so retry-exhaustion can be exercised directly against real
 // pg-boss job metadata (fetched from the real test queue) without waiting
@@ -25,6 +29,26 @@ export async function handleKbProcessJob(
   }
 }
 
+export async function handleWorkflowRunJob(
+  job: JobWithMetadata<JobPayloads["workflow.run"]>
+): Promise<void> {
+  try {
+    await startWorkflowRun(job.data.ticketId);
+  } catch (error) {
+    if (job.retryCount >= job.retryLimit) {
+      const message = error instanceof Error ? error.message : "The workflow run failed.";
+      await db
+        .update(tickets)
+        .set({ status: "escalated" })
+        .where(eq(tickets.id, job.data.ticketId));
+      console.error(
+        `Workflow run for ticket ${job.data.ticketId} failed permanently: ${message}`
+      );
+    }
+    throw error;
+  }
+}
+
 export async function registerHandlers(boss: PgBoss): Promise<void> {
   await boss.work(QUEUES.mailboxPoll, { batchSize: 1 }, async () => {
     const result = await pollMailboxOnce();
@@ -41,6 +65,26 @@ export async function registerHandlers(boss: PgBoss): Promise<void> {
     { batchSize: 1, includeMetadata: true },
     async ([job]) => {
       await handleKbProcessJob(job);
+    }
+  );
+
+  await boss.work<
+    JobPayloads["workflow.run"],
+    unknown,
+    { batchSize: 1; includeMetadata: true }
+  >(
+    QUEUES.workflowRun,
+    { batchSize: 1, includeMetadata: true },
+    async ([job]) => {
+      await handleWorkflowRunJob(job);
+    }
+  );
+
+  await boss.work<JobPayloads["workflow.resume"]>(
+    QUEUES.workflowResume,
+    { batchSize: 1 },
+    async ([job]) => {
+      await resumeWorkflowRun(job.data.approvalId);
     }
   );
 }

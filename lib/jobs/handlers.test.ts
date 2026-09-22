@@ -1,13 +1,22 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { JobWithMetadata } from "pg-boss";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { kbEntries } from "@/lib/db/schema";
+import { kbEntries, tickets } from "@/lib/db/schema";
 import { user } from "@/lib/auth/schema";
 import { RetryableAiError } from "@/lib/ai/errors";
 import * as embeddings from "@/lib/ai/embeddings";
+import { createTestTicket } from "@/lib/test-helpers/tickets";
 import { getBoss, stopBoss } from "./boss";
-import { QUEUES, RETRY_OPTIONS } from "./queues";
-import { handleKbProcessJob } from "./handlers";
+import { QUEUES, RETRY_OPTIONS, type JobPayloads } from "./queues";
+import { handleKbProcessJob, handleWorkflowRunJob } from "./handlers";
+
+const workflowMocks = vi.hoisted(() => ({
+  startWorkflowRun: vi.fn(),
+  resumeWorkflowRun: vi.fn(),
+}));
+
+vi.mock("@/lib/workflow/run", () => workflowMocks);
 
 // Exercises the kb.process handler together with a real pg-boss queue, which
 // is the coverage gap that let a retryable failure get stuck at `processing`
@@ -94,5 +103,46 @@ describe("kb.process handler against a real queue", () => {
       ignoreStartAfter: true,
     });
     expect(remaining).toEqual([]);
+  });
+});
+
+describe("workflow.run handler", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("escalates the ticket when the final retry fails", async () => {
+    const ticketId = await createTestTicket({});
+    workflowMocks.startWorkflowRun.mockRejectedValue(new Error("Azure stayed unavailable."));
+    const job = {
+      data: { ticketId, trigger: "new_ticket" },
+      retryCount: RETRY_OPTIONS.retryLimit,
+      retryLimit: RETRY_OPTIONS.retryLimit,
+    } as unknown as JobWithMetadata<JobPayloads["workflow.run"]>;
+
+    await expect(handleWorkflowRunJob(job)).rejects.toThrow("Azure stayed unavailable.");
+
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId));
+    expect(ticket.status).toBe("escalated");
+  });
+
+  it("leaves the ticket alone while another retry remains", async () => {
+    const ticketId = await createTestTicket({});
+    workflowMocks.startWorkflowRun.mockRejectedValue(new Error("Temporary failure."));
+    const job = {
+      data: { ticketId, trigger: "customer_reply" },
+      retryCount: RETRY_OPTIONS.retryLimit - 1,
+      retryLimit: RETRY_OPTIONS.retryLimit,
+    } as unknown as JobWithMetadata<JobPayloads["workflow.run"]>;
+
+    await expect(handleWorkflowRunJob(job)).rejects.toThrow("Temporary failure.");
+
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId));
+    expect(ticket.status).toBe("new");
   });
 });

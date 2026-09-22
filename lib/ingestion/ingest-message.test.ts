@@ -1,10 +1,20 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { attachments, mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
 import { auth } from "@/lib/auth/server";
 import type { MailProvider, ProviderMessage } from "./provider";
 import { ingestMessage } from "./ingest-message";
+
+const workflowMocks = vi.hoisted(() => ({
+  enqueue: vi.fn(),
+  supersedePendingApprovals: vi.fn(),
+}));
+
+vi.mock("@/lib/jobs/boss", () => ({ enqueue: workflowMocks.enqueue }));
+vi.mock("@/lib/workflow/approvals", () => ({
+  supersedePendingApprovals: workflowMocks.supersedePendingApprovals,
+}));
 
 function buildMessage(overrides: Partial<ProviderMessage> = {}): ProviderMessage {
   return {
@@ -29,6 +39,10 @@ const fakeProvider: MailProvider = {
 
 describe("ingestMessage", () => {
   let connectionId: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   beforeAll(async () => {
     const result = await auth.api.signUpEmail({
@@ -98,6 +112,16 @@ describe("ingestMessage", () => {
 
     const messageRows = await db.select().from(ticketMessages).where(eq(ticketMessages.ticketId, ticketRows[0].id));
     expect(messageRows).toHaveLength(2);
+    expect(workflowMocks.enqueue).toHaveBeenNthCalledWith(1, "workflow.run", {
+      ticketId: ticketRows[0].id,
+      trigger: "new_ticket",
+    });
+    expect(workflowMocks.enqueue).toHaveBeenNthCalledWith(2, "workflow.run", {
+      ticketId: ticketRows[0].id,
+      trigger: "customer_reply",
+    });
+    expect(workflowMocks.supersedePendingApprovals).toHaveBeenCalledOnce();
+    expect(workflowMocks.supersedePendingApprovals).toHaveBeenCalledWith(ticketRows[0].id);
   });
 
   it("reopens a resolved ticket when a new reply arrives on its thread", async () => {
@@ -177,6 +201,7 @@ describe("ingestMessage", () => {
       .from(ticketMessages)
       .where(eq(ticketMessages.providerMessageId, message.providerMessageId));
     expect(rows).toHaveLength(1);
+    expect(workflowMocks.enqueue).toHaveBeenCalledOnce();
   });
 
   it("handles a concurrent duplicate insert gracefully instead of throwing", async () => {
