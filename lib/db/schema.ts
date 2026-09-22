@@ -61,6 +61,7 @@ export const ticketStatusEnum = pgEnum("ticket_status", [
   "escalated",
   "resolved",
   "waiting_on_customer",
+  "triaged_out",
 ]);
 export const ticketCategoryEnum = pgEnum("ticket_category", [
   "billing",
@@ -147,6 +148,10 @@ export const ticketMessages = pgTable("ticket_messages", {
   messageIdHeader: text("message_id_header"),
   inReplyToHeader: text("in_reply_to_header"),
   sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  // Set on outbound messages the workflow sent. The send node checks for an
+  // existing row with this id before calling the transport, so a retried job
+  // cannot email the customer twice.
+  approvalId: uuid("approval_id"),
 });
 
 export const attachments = pgTable("attachments", {
@@ -287,29 +292,14 @@ export const agentPromptVersions = pgTable(
   ]
 );
 
-export const ticketAiDrafts = pgTable("ticket_ai_drafts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  ticketId: uuid("ticket_id")
-    .notNull()
-    .references(() => tickets.id),
-  draftBody: text("draft_body").notNull(),
-  citedKbChunkIds: uuid("cited_kb_chunk_ids").array().notNull().default([]),
-  confidenceScore: numeric("confidence_score").notNull(),
-  agentPromptVersionId: uuid("agent_prompt_version_id")
-    .notNull()
-    .references(() => agentPromptVersions.id),
-  // LangGraph checkpoint/thread reference, populated starting in the AI
-  // Response Pipeline phase so an interrupted run can resume.
-  graphThreadId: text("graph_thread_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const llmLogs = pgTable("llm_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
   ticketId: uuid("ticket_id").references(() => tickets.id),
   prompt: text("prompt").notNull(),
   response: text("response").notNull(),
   model: text("model").notNull(),
+  agentId: uuid("agent_id").references(() => agents.id),
+  graphThreadId: text("graph_thread_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -396,3 +386,73 @@ export const mailTransports = pgTable(
       .where(sql`${table.isActive} = true`),
   ]
 );
+
+export const approvalKindEnum = pgEnum("approval_kind", [
+  "send_email",
+  "triage_out",
+  "escalate",
+  "close",
+]);
+export const approvalStatusEnum = pgEnum("approval_status", [
+  "pending",
+  "decided",
+  "superseded",
+]);
+export const approvalDecisionEnum = pgEnum("approval_decision", [
+  "approve",
+  "edit",
+  "reject_feedback",
+  "override",
+  "take_over",
+]);
+
+export const ticketApprovals = pgTable(
+  "ticket_approvals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => tickets.id),
+    graphThreadId: text("graph_thread_id").notNull(),
+    kind: approvalKindEnum("kind").notNull(),
+    // Shaped per kind — see the spec's "What proposal holds, per kind".
+    proposal: jsonb("proposal").notNull(),
+    confidence: numeric("confidence").notNull(),
+    status: approvalStatusEnum("status").notNull().default("pending"),
+    decision: approvalDecisionEnum("decision"),
+    editedBody: text("edited_body"),
+    feedback: text("feedback"),
+    overrideAction: text("override_action"),
+    // Null when the gate auto-approved.
+    decidedByUserId: text("decided_by_user_id").references(() => user.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    // "approval_disabled" or "above_confidence_floor". Auto-approvals still
+    // write a row — without one there is no answer to "why did that go out?".
+    autoApprovedReason: text("auto_approved_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // A run can be suspended on at most one thing at a time, enforced by the
+    // database rather than by the graph remembering to check.
+    uniqueIndex("ticket_approvals_one_pending_per_thread")
+      .on(table.graphThreadId)
+      .where(sql`${table.status} = 'pending'`),
+    index("ticket_approvals_ticket_id_idx").on(table.ticketId),
+  ]
+);
+
+// One row, fixed id. Governs the system's autonomy rather than any one
+// agent's behavior, which is why it is separate from `agents`.
+export const workflowSettings = pgTable("workflow_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Master kill switch: stops new runs without touching agent configuration.
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  requireApproval: boolean("require_approval").notNull().default(true),
+  // Only meaningful when requireApproval is false.
+  autoSendMinConfidence: numeric("auto_send_min_confidence").notNull().default("0.8"),
+  updatedByUserId: text("updated_by_user_id").references(() => user.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});

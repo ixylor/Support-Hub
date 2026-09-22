@@ -17,7 +17,6 @@ describe("migration smoke test", () => {
     "mailbox_connections",
     "agents",
     "agent_prompt_versions",
-    "ticket_ai_drafts",
     "ticket_messages",
     "tickets",
     "user",

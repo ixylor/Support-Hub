@@ -248,10 +248,18 @@ async function main() {
     // columns they constrain have been nulled so the recreated constraints
     // have nothing to validate against a row TRUNCATE is about to remove.
     const hasAgentsCatalog = tables.some((t) => t.table_name === "agents");
-    const excludedFromTruncate = hasAgentsCatalog ? ["agents", "agent_prompt_versions"] : [];
+    // workflow_settings is the same kind of table as agents: its one row is
+    // seeded by migration 0009, not by application code, so there is no
+    // app-code seed step to re-run it from either.
+    const hasWorkflowSettings = tables.some((t) => t.table_name === "workflow_settings");
+    const excludedFromTruncate = [
+      ...(hasAgentsCatalog ? ["agents", "agent_prompt_versions"] : []),
+      ...(hasWorkflowSettings ? ["workflow_settings"] : []),
+    ];
 
     let agentsAiDeploymentFk;
     let agentPromptVersionsUpdatedByFk;
+    let workflowSettingsUpdatedByFk;
 
     if (hasAgentsCatalog) {
       agentsAiDeploymentFk = await findForeignKey(sql, "agents", "ai_deployment_id");
@@ -269,6 +277,18 @@ async function main() {
       );
       await sql`UPDATE "agents" SET "ai_deployment_id" = NULL`;
       await sql`UPDATE "agent_prompt_versions" SET "updated_by_user_id" = NULL`;
+    }
+
+    if (hasWorkflowSettings) {
+      // Same reasoning as agent_prompt_versions.updated_by_user_id above:
+      // truncating "user" would otherwise cascade into the preserved
+      // workflow_settings row through this FK.
+      workflowSettingsUpdatedByFk = await findForeignKey(sql, "workflow_settings", "updated_by_user_id");
+
+      await sql.unsafe(
+        `ALTER TABLE "workflow_settings" DROP CONSTRAINT "${workflowSettingsUpdatedByFk.constraintName}"`
+      );
+      await sql`UPDATE "workflow_settings" SET "updated_by_user_id" = NULL`;
     }
 
     const truncatable = tables.filter((t) => !excludedFromTruncate.includes(t.table_name));
@@ -304,6 +324,14 @@ async function main() {
         `ALTER TABLE "agent_prompt_versions" ADD CONSTRAINT "${agentPromptVersionsUpdatedByFk.constraintName}" ` +
           `FOREIGN KEY ("updated_by_user_id") REFERENCES "${agentPromptVersionsUpdatedByFk.referencedTable}"("${agentPromptVersionsUpdatedByFk.referencedColumn}") ` +
           `ON DELETE ${agentPromptVersionsUpdatedByFk.onDelete} ON UPDATE ${agentPromptVersionsUpdatedByFk.onUpdate}`
+      );
+    }
+
+    if (hasWorkflowSettings) {
+      await sql.unsafe(
+        `ALTER TABLE "workflow_settings" ADD CONSTRAINT "${workflowSettingsUpdatedByFk.constraintName}" ` +
+          `FOREIGN KEY ("updated_by_user_id") REFERENCES "${workflowSettingsUpdatedByFk.referencedTable}"("${workflowSettingsUpdatedByFk.referencedColumn}") ` +
+          `ON DELETE ${workflowSettingsUpdatedByFk.onDelete} ON UPDATE ${workflowSettingsUpdatedByFk.onUpdate}`
       );
     }
 
