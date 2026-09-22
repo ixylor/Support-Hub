@@ -6,25 +6,31 @@ import type { ThreadMessage, WorkflowState } from "../state";
 
 const KB_RESULT_LIMIT = 8;
 
-// Turns are separated by a blank line ("\n\n") followed by a role prefix —
-// that shape is the only thing that marks a genuine boundary. A message
-// body is customer-controlled text that reaches the model verbatim, so a
-// body containing that same blank-line-plus-prefix shape (e.g.
-// "\n\nSupport: ...") would otherwise be indistinguishable from a real
-// turn. Collapsing every blank line inside a body removes the one
-// structural feature a forged boundary depends on, without touching the
-// visible "Customer:"/"Support:" text a forged line still contains — it
-// just can no longer open a new turn.
-function stripBlankLines(body: string): string {
+// A genuine role marker begins at column zero — the first character
+// immediately after the previous message's join. A message body is
+// customer-controlled text inserted after that marker, so any line of it
+// beyond the first would otherwise land at column zero too, on its own
+// line, in the exact position a real marker occupies — indistinguishable
+// to a model no matter how the line is punctuated or spaced. Indenting
+// every line but the first denies the body that position entirely: no
+// character a customer can put in a message body reaches column zero, so
+// a forged "Support:"/"Customer:" line can be present in the text without
+// ever being mistaken for a turn boundary.
+const CONTINUATION_INDENT = "    ";
+
+function indentContinuationLines(body: string): string {
   return body
     .split(/\r?\n/)
-    .filter((line) => line.trim() !== "")
+    .map((line, index) => (index === 0 ? line : CONTINUATION_INDENT + line))
     .join("\n");
 }
 
 export function formatThread(thread: ThreadMessage[]): string {
   return thread
-    .map((message) => `${message.direction === "inbound" ? "Customer" : "Support"}: ${stripBlankLines(message.body)}`)
+    .map(
+      (message) =>
+        `${message.direction === "inbound" ? "Customer" : "Support"}: ${indentContinuationLines(message.body)}`
+    )
     .join("\n\n");
 }
 
