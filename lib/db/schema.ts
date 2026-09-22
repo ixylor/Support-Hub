@@ -467,3 +467,39 @@ export const workflowSettings = pgTable(
     uniqueIndex("workflow_settings_singleton").on(sql`(true)`),
   ]
 );
+
+export const sendAttemptStatusEnum = pgEnum("send_attempt_status", [
+  "sending",
+  "sent",
+  "failed",
+]);
+
+// A claim, not a log. sendNode inserts this row BEFORE calling the mail
+// transport, and the unique constraint on approval_id means a second
+// attempt at the same approval loses the insert instead of quietly
+// proceeding — that is what makes a duplicate customer email structurally
+// impossible rather than merely unlikely. A row stuck at "sending" (the
+// process died between the transport accepting the message and this row
+// being updated) or "failed" is deliberately not retried automatically;
+// it is what a human reviewing the ticket sees instead of silence.
+export const ticketSendAttempts = pgTable("ticket_send_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Cascades so a deleted ticket does not leave an orphaned claim row behind
+  // to trip up an unrelated cleanup elsewhere (e.g. a test or an admin
+  // action that deletes a ticket outright) with a foreign key violation.
+  ticketId: uuid("ticket_id")
+    .notNull()
+    .references(() => tickets.id, { onDelete: "cascade" }),
+  // No foreign key to ticket_approvals, matching ticket_messages.approvalId
+  // above — kept a loosely-typed reference rather than an enforced one so a
+  // unit test can exercise the claim without needing a real approval row.
+  approvalId: uuid("approval_id").notNull().unique(),
+  status: sendAttemptStatusEnum("status").notNull().default("sending"),
+  providerMessageId: text("provider_message_id"),
+  messageIdHeader: text("message_id_header"),
+  // Populated on failure so the ticket can show why nothing went out
+  // without anyone digging through logs.
+  errorText: text("error_text"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});

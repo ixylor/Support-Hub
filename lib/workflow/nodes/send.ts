@@ -1,9 +1,46 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
+import { mailboxConnections, ticketMessages, ticketSendAttempts, tickets } from "@/lib/db/schema";
 import type { MailTransport } from "@/lib/mail/transport";
-import type { WorkflowState } from "../state";
-import type { GateVerdict } from "./gate";
+import type { GateVerdict, WorkflowState } from "../state";
+
+export class NoOutboundDraftError extends Error {
+  constructor(ticketId: string) {
+    super(`sendNode reached for ticket ${ticketId} with nothing to send.`);
+    this.name = "NoOutboundDraftError";
+  }
+}
+
+export class TicketMailboxNotFoundError extends Error {
+  constructor(ticketId: string) {
+    super(`Ticket ${ticketId} has no resolvable mailbox connection.`);
+    this.name = "TicketMailboxNotFoundError";
+  }
+}
+
+// Thrown after a send attempt is recorded as failed, so the caller (and,
+// through it, the graph run) observes the failure rather than the run
+// silently continuing as if the reply went out.
+export class SendFailedError extends Error {
+  constructor(ticketId: string, cause: string) {
+    super(`Sending the reply for ticket ${ticketId} failed: ${cause}`);
+    this.name = "SendFailedError";
+  }
+}
+
+const SEND_ATTEMPT_APPROVAL_CONSTRAINT = "ticket_send_attempts_approval_id_unique";
+
+// Same pattern as approvals.ts's isPendingPerThreadViolation: postgres.js
+// flattens the driver error's fields onto `.cause`, and checking the
+// constraint name (rather than the message text) is what keeps this from
+// ever matching the wrong unique index by accident.
+function isApprovalAlreadyClaimedViolation(error: unknown): boolean {
+  const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+  if (!(cause instanceof Error)) return false;
+
+  const pgError = cause as { code?: string; constraint_name?: string };
+  return pgError.code === "23505" && pgError.constraint_name === SEND_ATTEMPT_APPROVAL_CONSTRAINT;
+}
 
 function replySubject(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject : `Re: ${subject}`;
@@ -13,31 +50,45 @@ export async function sendNode(
   state: WorkflowState,
   verdict: GateVerdict,
   transport: MailTransport
-): Promise<{ sentMessageId: string }> {
+): Promise<{ sentMessageId: string | null }> {
   if (!state.outbound) {
-    throw new Error("The send node reached with nothing to send.");
+    throw new NoOutboundDraftError(state.ticketId);
   }
 
-  // The guard that matters most in this system. It stops a resumed run from
-  // re-sending once the prior send's row has committed — the common case,
-  // since a checkpointed graph can reach this node again after a crash, a
-  // retried job, or a duplicate resume. It does not cover the narrower
-  // window where the process dies after transport.send() succeeds but
-  // before the insert below commits; that gap is real and is called out in
-  // the Task 8 report rather than papered over here.
-  const [existing] = await db
-    .select({ id: ticketMessages.id })
-    .from(ticketMessages)
-    .where(
-      and(
-        eq(ticketMessages.ticketId, state.ticketId),
-        eq(ticketMessages.approvalId, verdict.approvalId)
-      )
-    )
-    .limit(1);
+  // The claim. Inserted before the transport is ever called, with a unique
+  // constraint on approval_id: a second attempt at the same approval loses
+  // this insert instead of quietly proceeding, which is what makes a
+  // duplicate customer email structurally impossible rather than merely
+  // unlikely — a check-then-insert guard (the previous design) has a race
+  // window between the check and the insert that this does not.
+  let claim: { id: string };
+  try {
+    [claim] = await db
+      .insert(ticketSendAttempts)
+      .values({
+        ticketId: state.ticketId,
+        approvalId: verdict.approvalId,
+        status: "sending",
+      })
+      .returning({ id: ticketSendAttempts.id });
+  } catch (error) {
+    if (!isApprovalAlreadyClaimedViolation(error)) throw error;
 
-  if (existing) {
-    return { sentMessageId: existing.id };
+    // Someone already claimed this send — possibly mid-flight, possibly
+    // finished. Either way this run has nothing left to do: calling the
+    // transport now would risk the exact duplicate the claim exists to
+    // prevent. If the earlier attempt finished successfully there is a
+    // ticket_messages row to hand back; if it is still in flight or failed,
+    // there is nothing to return.
+    const [existingMessage] = await db
+      .select({ id: ticketMessages.id })
+      .from(ticketMessages)
+      .where(
+        and(eq(ticketMessages.ticketId, state.ticketId), eq(ticketMessages.approvalId, verdict.approvalId))
+      )
+      .limit(1);
+
+    return { sentMessageId: existingMessage?.id ?? null };
   }
 
   const body = verdict.decision === "edit" && verdict.editedBody ? verdict.editedBody : state.outbound.body;
@@ -49,13 +100,29 @@ export async function sendNode(
     .filter((header): header is string => header !== null);
   const inReplyTo = references.length ? references[references.length - 1] : null;
 
-  const sent = await transport.send({
-    to: state.requesterEmail,
-    subject: replySubject(state.subject),
-    bodyText: body,
-    inReplyTo,
-    references,
-  });
+  let sent: { providerMessageId: string; messageIdHeader: string };
+  try {
+    sent = await transport.send({
+      to: state.requesterEmail,
+      subject: replySubject(state.subject),
+      bodyText: body,
+      inReplyTo,
+      references,
+    });
+  } catch (error) {
+    const errorText = error instanceof Error ? error.message : String(error);
+    // The claim row is left in place, not deleted or retried automatically
+    // — a fresh attempt would need a fresh approval, and its unique
+    // constraint on approval_id is exactly what stops this failure from
+    // quietly turning into two customer emails if something retries the
+    // same approval later. This row is the visible record of the failure.
+    await db
+      .update(ticketSendAttempts)
+      .set({ status: "failed", errorText, completedAt: new Date() })
+      .where(eq(ticketSendAttempts.id, claim.id));
+
+    throw new SendFailedError(state.ticketId, errorText);
+  }
 
   // ingest-message.ts records the party that actually wrote the message
   // (the provider-reported sender), not "whoever the ticket is with" — for
@@ -69,7 +136,12 @@ export async function sendNode(
     .limit(1);
 
   if (!ticketRow) {
-    throw new Error(`Ticket ${state.ticketId} has no resolvable mailbox connection.`);
+    // The transport already sent the message at this point — the claim row
+    // stays "sending" rather than being marked failed, since the reply did
+    // go out; a human needs to see this as "sent but unrecorded", not
+    // "never sent". Surfacing that distinction on the ticket is Task 12's
+    // concern; this only has to avoid quietly losing the fact that it happened.
+    throw new TicketMailboxNotFoundError(state.ticketId);
   }
 
   const [row] = await db
@@ -85,6 +157,16 @@ export async function sendNode(
       approvalId: verdict.approvalId,
     })
     .returning({ id: ticketMessages.id });
+
+  await db
+    .update(ticketSendAttempts)
+    .set({
+      status: "sent",
+      providerMessageId: sent.providerMessageId,
+      messageIdHeader: sent.messageIdHeader,
+      completedAt: new Date(),
+    })
+    .where(eq(ticketSendAttempts.id, claim.id));
 
   return { sentMessageId: row.id };
 }

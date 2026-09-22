@@ -1,15 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { ticketMessages } from "@/lib/db/schema";
+import { ticketMessages, ticketSendAttempts } from "@/lib/db/schema";
 import { addInboundMessage, createTestTicket } from "@/lib/test-helpers/tickets";
 import type { MailTransport } from "@/lib/mail/transport";
 import type { WorkflowState } from "../state";
-import { sendNode } from "./send";
-
-// ticket_messages.approval_id is a uuid column; a real approval's id from
-// createApproval is always shaped like this, so the fake here has to be too.
-const APPROVAL_ID = "11111111-1111-1111-1111-111111111111";
+import { SendFailedError, sendNode } from "./send";
 
 // provider_message_id is unique across the whole table, and this file's
 // tests share one database with no reset between them (see
@@ -36,10 +33,16 @@ function fakeTransport(): MailTransport & { sent: unknown[] } {
 
 describe("send node", () => {
   let ticketId: string;
+  // ticket_send_attempts.approval_id is unique across the whole table, not
+  // scoped to a ticket — a fixed id reused across tests would make every
+  // test after the first collide with the claim the previous test made, for
+  // an entirely different ticket. Each test gets its own.
+  let approvalId: string;
 
   beforeEach(async () => {
     ticketId = await createTestTicket({ subject: "Login is not working" });
     await addInboundMessage(ticketId, "I cannot sign in.", "<inbound-1@mail.example.test>");
+    approvalId = randomUUID();
   });
 
   function state(): WorkflowState {
@@ -65,6 +68,8 @@ describe("send node", () => {
       draftAttempts: 1,
       infoRounds: 0,
       endReason: null,
+      pendingApproval: null,
+      verdict: null,
     } as WorkflowState;
   }
 
@@ -78,7 +83,7 @@ describe("send node", () => {
   it("sends the draft, threading it onto the last inbound message", async () => {
     const transport = fakeTransport();
 
-    await sendNode(state(), { ...approve, approvalId: APPROVAL_ID }, transport);
+    await sendNode(state(), { ...approve, approvalId }, transport);
 
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]).toMatchObject({
@@ -95,7 +100,7 @@ describe("send node", () => {
 
     await sendNode(
       state(),
-      { decision: "edit", editedBody: "A warmer reply.", feedback: null, overrideAction: null, approvalId: APPROVAL_ID },
+      { decision: "edit", editedBody: "A warmer reply.", feedback: null, overrideAction: null, approvalId },
       transport
     );
 
@@ -106,15 +111,15 @@ describe("send node", () => {
     const transport = fakeTransport();
     const withRe = { ...state(), subject: "Re: Login is not working" };
 
-    await sendNode(withRe, { ...approve, approvalId: APPROVAL_ID }, transport);
+    await sendNode(withRe, { ...approve, approvalId }, transport);
 
     expect(transport.sent[0]).toMatchObject({ subject: "Re: Login is not working" });
   });
 
-  it("records the outbound message against the approval", async () => {
+  it("records the outbound message and a completed send attempt", async () => {
     const transport = fakeTransport();
 
-    await sendNode(state(), { ...approve, approvalId: APPROVAL_ID }, transport);
+    await sendNode(state(), { ...approve, approvalId }, transport);
 
     const [row] = await db
       .select()
@@ -123,7 +128,7 @@ describe("send node", () => {
         and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.direction, "outbound"))
       );
     expect(row.body).toBe("Reset your password.");
-    expect(row.approvalId).toBe(APPROVAL_ID);
+    expect(row.approvalId).toBe(approvalId);
     // The exact sequence number depends on how many sends happened earlier
     // in this file (see messageSequence above) — what matters is that the
     // header the transport actually returned is what got persisted.
@@ -134,13 +139,21 @@ describe("send node", () => {
     // an outbound row means the mailbox that sent it, not the customer it
     // was sent to. createTestTicket's default mailbox is support@example.test.
     expect(row.senderEmail).toBe("support@example.test");
+
+    const [attempt] = await db
+      .select()
+      .from(ticketSendAttempts)
+      .where(eq(ticketSendAttempts.approvalId, approvalId));
+    expect(attempt.status).toBe("sent");
+    expect(attempt.messageIdHeader).toBe(row.messageIdHeader);
+    expect(attempt.completedAt).not.toBeNull();
   });
 
   it("is idempotent: a retried job sends once", async () => {
     const transport = fakeTransport();
 
-    await sendNode(state(), { ...approve, approvalId: APPROVAL_ID }, transport);
-    await sendNode(state(), { ...approve, approvalId: APPROVAL_ID }, transport);
+    await sendNode(state(), { ...approve, approvalId }, transport);
+    await sendNode(state(), { ...approve, approvalId }, transport);
 
     expect(transport.sent).toHaveLength(1);
 
@@ -151,5 +164,54 @@ describe("send node", () => {
         and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.direction, "outbound"))
       );
     expect(rows).toHaveLength(1);
+  });
+
+  it("claims the send before calling the transport, so a losing claim never reaches it", async () => {
+    // Simulates another run having already claimed this exact send — the
+    // scenario the unique constraint on approval_id exists to catch, tested
+    // directly rather than only inferred from a sequential retry.
+    await db.insert(ticketSendAttempts).values({ ticketId, approvalId, status: "sending" });
+
+    const send = vi.fn(async () => ({
+      messageIdHeader: "<should-not-be-sent@mail.example.test>",
+      providerMessageId: "<should-not-be-sent@mail.example.test>",
+    }));
+    const transport: MailTransport = { send, async verify() {} };
+
+    const result = await sendNode(state(), { ...approve, approvalId }, transport);
+
+    expect(send).not.toHaveBeenCalled();
+    // Nothing has completed for this approval yet, so there is no message to
+    // hand back — the caller should not mistake this for a successful send.
+    expect(result.sentMessageId).toBeNull();
+  });
+
+  it("records a failed attempt when the transport rejects, and creates no outbound message", async () => {
+    const send = vi.fn(async () => {
+      throw new Error("smtp timeout");
+    });
+    const transport: MailTransport = { send, async verify() {} };
+
+    await expect(sendNode(state(), { ...approve, approvalId }, transport)).rejects.toBeInstanceOf(
+      SendFailedError
+    );
+
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const [attempt] = await db
+      .select()
+      .from(ticketSendAttempts)
+      .where(eq(ticketSendAttempts.approvalId, approvalId));
+    expect(attempt.status).toBe("failed");
+    expect(attempt.errorText).toContain("smtp timeout");
+    expect(attempt.completedAt).not.toBeNull();
+
+    const rows = await db
+      .select()
+      .from(ticketMessages)
+      .where(
+        and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.direction, "outbound"))
+      );
+    expect(rows).toHaveLength(0);
   });
 });
