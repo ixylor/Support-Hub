@@ -34,8 +34,9 @@ export async function updateWorkflowSettings(
     );
   }
 
-  // The table holds exactly one row, seeded by migration, so an unfiltered
-  // update is the whole write.
+  // Unfiltered by design: workflow_settings_singleton (see schema.ts) makes
+  // the database itself refuse a second row, so there is nothing to filter
+  // by — this UPDATE always touches the one row that can exist.
   await db.update(workflowSettings).set({
     isEnabled: input.isEnabled,
     requireApproval: input.requireApproval,

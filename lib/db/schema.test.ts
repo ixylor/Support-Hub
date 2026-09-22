@@ -318,4 +318,25 @@ describe("workflow schema", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].requireApproval).toBe(true);
   });
+
+  it("refuses a second workflow settings row", async () => {
+    // drizzle-postgres-js wraps the driver error in a "Failed query: ..."
+    // message and puts the actual Postgres reason on `.cause` — assert on
+    // that, not the wrapper, to check the constraint that actually fired.
+    let thrown: unknown;
+    try {
+      await db.insert(workflowSettings).values({
+        isEnabled: true,
+        requireApproval: true,
+        autoSendMinConfidence: "0.8",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    const cause = (thrown as { cause?: unknown }).cause;
+    expect(cause).toBeInstanceOf(Error);
+    expect((cause as Error).message).toMatch(/workflow_settings_singleton/);
+  });
 });

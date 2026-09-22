@@ -441,18 +441,29 @@ export const ticketApprovals = pgTable(
   ]
 );
 
-// One row, fixed id. Governs the system's autonomy rather than any one
-// agent's behavior, which is why it is separate from `agents`.
-export const workflowSettings = pgTable("workflow_settings", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // Master kill switch: stops new runs without touching agent configuration.
-  isEnabled: boolean("is_enabled").notNull().default(true),
-  requireApproval: boolean("require_approval").notNull().default(true),
-  // Only meaningful when requireApproval is false.
-  autoSendMinConfidence: numeric("auto_send_min_confidence").notNull().default("0.8"),
-  updatedByUserId: text("updated_by_user_id").references(() => user.id),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+// Governs the system's autonomy rather than any one agent's behavior, which
+// is why it is separate from `agents`. The row's id is random, not fixed —
+// what actually keeps this a singleton is workflow_settings_singleton below.
+export const workflowSettings = pgTable(
+  "workflow_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Master kill switch: stops new runs without touching agent configuration.
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    requireApproval: boolean("require_approval").notNull().default(true),
+    // Only meaningful when requireApproval is false.
+    autoSendMinConfidence: numeric("auto_send_min_confidence").notNull().default("0.8"),
+    updatedByUserId: text("updated_by_user_id").references(() => user.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  () => [
+    // A unique index on a constant expression: every row indexes to the same
+    // value, so Postgres refuses a second one. This is what makes
+    // updateWorkflowSettings's unfiltered UPDATE actually safe — without it,
+    // "the table holds exactly one row" would be a comment, not a guarantee.
+    uniqueIndex("workflow_settings_singleton").on(sql`(true)`),
+  ]
+);

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "workflow_settings_singleton" ON "workflow_settings" USING btree ((true));
