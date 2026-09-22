@@ -14,6 +14,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:test": "node scripts/migrate-test.mjs",
     "db:reset:test": "node scripts/reset-test-db.mjs",
+    "db:setup-checkpointer": "tsx scripts/setup-checkpointer.ts",
+    "db:setup-checkpointer:test": "node scripts/setup-checkpointer-test.mjs",
     "worker": "tsx lib/jobs/worker.ts"
   },
   "dependencies": {

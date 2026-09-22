@@ -7,12 +7,26 @@
 import { spawnSync } from "node:child_process";
 
 export default function globalSetup() {
-  const result = spawnSync("node", ["scripts/reset-test-db.mjs"], {
+  const resetResult = spawnSync("node", ["scripts/reset-test-db.mjs"], {
     stdio: "inherit",
     shell: true,
   });
 
-  if (result.status !== 0) {
+  if (resetResult.status !== 0) {
     throw new Error("Failed to reset the test database before running tests.");
+  }
+
+  // Runs after the truncate, not merged into it — reset-test-db.mjs's one
+  // job is truncation, and the checkpointer's tables are not among the
+  // ones it manages. PostgresSaver.setup() is idempotent, so running it on
+  // every invocation is cheap and keeps lib/workflow/graph.test.ts's real
+  // checkpointer usable without a separate manual setup step.
+  const checkpointerResult = spawnSync("node", ["scripts/setup-checkpointer-test.mjs"], {
+    stdio: "inherit",
+    shell: true,
+  });
+
+  if (checkpointerResult.status !== 0) {
+    throw new Error("Failed to set up the checkpointer tables before running tests.");
   }
 }
