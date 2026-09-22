@@ -24,7 +24,11 @@ export default defineConfig({
     environment: "jsdom",
     globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.ts"],
-    exclude: ["node_modules", "dist", ".next", "e2e"],
+    // ".claude" holds git-ignored scratch copies of the repo, each with its
+    // own node_modules. The bare "node_modules" entry only anchors at the
+    // project root, so without these globs vitest discovers and runs the
+    // .test.js files shipped inside those nested dependency trees.
+    exclude: ["**/node_modules/**", "dist", ".next", "e2e", ".claude/**"],
     // Injected into each test worker's process.env, overriding whatever
     // DATABASE_URL .env sets — this is what points lib/db/client.ts at the
     // test database instead of the dev one for every test file.
