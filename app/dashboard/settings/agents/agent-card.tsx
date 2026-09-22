@@ -28,6 +28,11 @@ export function AgentCard({
   deployments: { id: string; deploymentName: string }[];
 }) {
   const [prompt, setPrompt] = useState(agent.prompt);
+  // The last server-confirmed prompt. This, not the original `agent` prop, is
+  // the baseline `prompt` is diffed against — it's refreshed after every save
+  // (see the resync in handleSave), so a save that only touches temperature
+  // or isEnabled never re-sends an already-saved prompt.
+  const [savedPrompt, setSavedPrompt] = useState(agent.prompt);
   const [temperature, setTemperature] = useState(String(agent.temperature));
   const [deploymentId, setDeploymentId] = useState(agent.aiDeploymentId ?? DEFAULT_DEPLOYMENT_VALUE);
   const [isEnabled, setIsEnabled] = useState(agent.isEnabled);
@@ -35,19 +40,53 @@ export function AgentCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Re-fetches this agent's config and resyncs local state from it. Called
+  // after every save attempt (success or failure) rather than trusting an
+  // optimistic update, because the PUT route is not atomic: a prompt version
+  // can be committed and then a later validation failure (e.g. a bad
+  // temperature) can still return an error, leaving the server a step ahead
+  // of whatever the card assumed. If the re-fetch itself fails, the last
+  // known values are left alone rather than blanking the card.
+  async function resyncFromServer() {
+    try {
+      const response = await fetch("/api/settings/agents");
+      if (!response.ok) return;
+      const payload = (await response.json()) as { agents?: Array<Record<string, unknown>> };
+      const fresh = payload.agents?.find((candidate) => candidate.key === agent.key);
+      if (!fresh) return;
+      setPrompt(fresh.prompt as string);
+      setSavedPrompt(fresh.prompt as string);
+      setVersion(fresh.promptVersion as number);
+      setTemperature(String(fresh.temperature));
+      setDeploymentId((fresh.aiDeploymentId as string | null) ?? DEFAULT_DEPLOYMENT_VALUE);
+      setIsEnabled(fresh.isEnabled as boolean);
+    } catch {
+      // Leave the card showing its last known values; the save error (if any)
+      // is already surfaced separately.
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
-      const promptChanged = prompt !== agent.prompt;
+      const parsedTemperature = temperature.trim() === "" ? NaN : Number(temperature);
+      if (Number.isNaN(parsedTemperature)) {
+        throw new Error("Temperature must be a number.");
+      }
+
+      const promptChanged = prompt !== savedPrompt;
       const response = await fetch("/api/settings/agents", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           key: agent.key,
           ...(promptChanged ? { prompt } : {}),
+          // These three are deliberately resent on every save, even when
+          // unchanged, so the route always has the full current config to
+          // validate and persist together with any prompt change.
           aiDeploymentId: deploymentId === DEFAULT_DEPLOYMENT_VALUE ? null : deploymentId,
-          temperature: Number(temperature),
+          temperature: parsedTemperature,
           isEnabled,
         }),
       });
@@ -55,12 +94,10 @@ export function AgentCard({
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(payload?.error ?? "Failed to save the agent.");
       }
-      if (promptChanged) {
-        setVersion((current) => current + 1);
-      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save the agent.");
     } finally {
+      await resyncFromServer();
       setSaving(false);
     }
   }
