@@ -1,9 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startSmtpSink, type SmtpSink } from "@/lib/test-helpers/smtp-sink";
 import type { ActiveTransport } from "../config";
 import { createSmtpTransport } from "./smtp";
 
 let sink: SmtpSink;
+
+// The sink presents a self-signed certificate (see smtp-sink.ts) so it can
+// advertise STARTTLS the way requireTLS now demands. Node's TLS stack won't
+// trust that certificate by default, and there is no production config knob
+// for pinning a CA, so the test process is told to skip chain-of-trust
+// verification for its own connections. This is strictly a test-runtime
+// setting: it never reaches the production transport, which keeps verifying
+// certificates normally.
+let previousRejectUnauthorized: string | undefined;
+
+beforeAll(() => {
+  previousRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+});
+
+afterAll(() => {
+  if (previousRejectUnauthorized === undefined) {
+    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  } else {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousRejectUnauthorized;
+  }
+});
 
 function transportFor(sink: SmtpSink): ActiveTransport {
   return {
@@ -12,7 +34,10 @@ function transportFor(sink: SmtpSink): ActiveTransport {
     name: "Sink",
     password: "unused",
     config: {
-      host: "127.0.0.1",
+      // The sink's STARTTLS cert is issued for CN=localhost; connecting by
+      // that name (rather than the loopback address) lets TLS hostname
+      // verification succeed without weakening certificate checking.
+      host: "localhost",
       port: sink.port,
       secure: false,
       username: "support@example.test",

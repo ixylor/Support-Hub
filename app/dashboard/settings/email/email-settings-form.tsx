@@ -30,6 +30,10 @@ export function EmailSettingsForm({
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Tracks whether a transport now exists, independent of the initial server
+  // prop, so the test button enables immediately after a first-time save
+  // instead of waiting for a page reload.
+  const [configured, setConfigured] = useState(initialConfig !== null);
 
   function set<K extends keyof SmtpConfig>(key: K, value: SmtpConfig[K]) {
     setConfig((current) => ({ ...current, [key]: value }));
@@ -66,6 +70,7 @@ export function EmailSettingsForm({
     if (ok) {
       setStatus("Saved.");
       setPassword("");
+      setConfigured(true);
     }
   }
 
@@ -151,7 +156,7 @@ export function EmailSettingsForm({
         <Button onClick={handleSave} disabled={busy}>
           Save
         </Button>
-        <Button variant="outline" onClick={handleTest} disabled={busy || !initialConfig}>
+        <Button variant="outline" onClick={handleTest} disabled={busy || !configured}>
           Send test email
         </Button>
         {status ? (

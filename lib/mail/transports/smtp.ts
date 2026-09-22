@@ -9,6 +9,11 @@ export function createSmtpTransport(transport: ActiveTransport): MailTransport {
     host: config.host,
     port: config.port,
     secure: config.secure,
+    // When the connection isn't already wrapped in implicit TLS, require the
+    // server to upgrade via STARTTLS before we authenticate. Without this,
+    // nodemailer will happily send AUTH in the clear if the server doesn't
+    // advertise STARTTLS (or a middlebox strips it from the greeting).
+    requireTLS: !config.secure,
     // A sink or a relay on a trusted network needs no credentials; sending
     // an empty user/pass pair makes nodemailer attempt AUTH and fail.
     auth: config.username ? { user: config.username, pass: password } : undefined,
