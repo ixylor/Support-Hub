@@ -50,6 +50,13 @@
       "when": 1789984830269,
       "tag": "0006_third_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790044011637,
+      "tag": "0007_outgoing_red_hulk",
+      "breakpoints": true
     }
   ]
 }
