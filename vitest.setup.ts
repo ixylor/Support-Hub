@@ -29,4 +29,12 @@ beforeAll(async () => {
     WHERE "version" = 1
   `);
   await db.execute(sql`UPDATE "agents" SET "ai_deployment_id" = NULL, "is_enabled" = true`);
+
+  // workflow_settings is seeded by migration but truncated by reset-test-db,
+  // so re-seed it before each test file runs
+  await db.execute(sql`DELETE FROM "workflow_settings"`);
+  await db.execute(sql`
+    INSERT INTO "workflow_settings" ("is_enabled", "require_approval", "auto_send_min_confidence")
+    VALUES (true, true, '0.8')
+  `);
 });
