@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { ticketMessages, tickets } from "@/lib/db/schema";
+import { ticketApprovals, ticketMessages, tickets } from "@/lib/db/schema";
 import { searchKnowledgeBase } from "@/lib/kb/retrieve";
 import type { ThreadMessage, WorkflowState } from "../state";
 
@@ -65,8 +65,28 @@ export async function loadContextNode(state: WorkflowState): Promise<Partial<Wor
     .orderBy(asc(ticketMessages.sentAt));
 
   // Derived from the thread rather than carried in state, so a follow-up run
-  // starting fresh still knows how many times we have already asked.
-  const infoRounds = rows.filter((row) => row.direction === "outbound").length;
+  // starting fresh still knows how many times we have already asked. Every
+  // outbound message is a reply, but not every reply is a question — an
+  // answer the customer never responded to is also an outbound row, and
+  // counting it here would trip the info-round cap after a single genuine
+  // question. The gate that sends a message is always named "send_email"
+  // regardless of whether it carried a question or an answer, so the two
+  // can only be told apart through the approval's proposal, which records
+  // the outbound draft's own kind. sendNode always stamps the approval id
+  // it sent under onto the ticket_messages row it writes (see
+  // lib/workflow/nodes/send.ts), which is what makes this join reliable.
+  const infoRoundRows = await db
+    .select({ id: ticketMessages.id })
+    .from(ticketMessages)
+    .innerJoin(ticketApprovals, eq(ticketMessages.approvalId, ticketApprovals.id))
+    .where(
+      and(
+        eq(ticketMessages.ticketId, state.ticketId),
+        eq(ticketMessages.direction, "outbound"),
+        sql`${ticketApprovals.proposal} ->> 'kind' = 'question'`
+      )
+    );
+  const infoRounds = infoRoundRows.length;
 
   return {
     thread: rows,

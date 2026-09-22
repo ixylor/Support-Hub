@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { db } from "@/lib/db/client";
+import { ticketApprovals, ticketMessages } from "@/lib/db/schema";
 import { addInboundMessage, createTestTicket } from "@/lib/test-helpers/tickets";
 import { formatThread, loadContextNode, retrieveKbNode } from "./context";
 
@@ -34,6 +37,63 @@ describe("context nodes", () => {
 
     const patch = await loadContextNode({ ticketId } as never);
     expect(patch.infoRounds).toBe(0);
+  });
+
+  // An answered ticket is not the same as a ticket the workflow has asked a
+  // question on. Both leave an outbound ticket_messages row, so counting
+  // outbound rows on their own (as loadContextNode used to) would trip the
+  // 3-round info cap on a ticket that has simply been answered twice.
+  // ticket_messages.approval_id links each outbound row back to the
+  // approval that authorized it, and the approval's proposal JSON carries
+  // the kind ("answer" vs. "question") that actually distinguishes them.
+  it("does not count an answered outbound message as an info round", async () => {
+    await addInboundMessage(ticketId, "Help");
+
+    const [answerApproval] = await db
+      .insert(ticketApprovals)
+      .values({
+        ticketId,
+        graphThreadId: "thread-1",
+        kind: "send_email",
+        proposal: { kind: "answer" },
+        confidence: "0.9",
+        status: "decided",
+        decision: "approve",
+      })
+      .returning({ id: ticketApprovals.id });
+
+    const [questionApproval] = await db
+      .insert(ticketApprovals)
+      .values({
+        ticketId,
+        graphThreadId: "thread-1",
+        kind: "send_email",
+        proposal: { kind: "question" },
+        confidence: "0.9",
+        status: "decided",
+        decision: "approve",
+      })
+      .returning({ id: ticketApprovals.id });
+
+    await db.insert(ticketMessages).values({
+      ticketId,
+      direction: "outbound",
+      senderEmail: "support@example.test",
+      body: "Reset your password.",
+      providerMessageId: randomUUID(),
+      approvalId: answerApproval.id,
+    });
+    await db.insert(ticketMessages).values({
+      ticketId,
+      direction: "outbound",
+      senderEmail: "support@example.test",
+      body: "Which browser are you using?",
+      providerMessageId: randomUUID(),
+      approvalId: questionApproval.id,
+    });
+
+    const patch = await loadContextNode({ ticketId } as never);
+    expect(patch.infoRounds).toBe(1);
   });
 
   it("searches the knowledge base using the subject and the newest inbound message", async () => {
