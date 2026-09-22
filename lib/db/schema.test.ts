@@ -9,10 +9,13 @@ import {
   kbChunks,
   kbEntries,
   mailboxConnections,
+  ticketApprovals,
   ticketMessages,
   tickets,
+  workflowSettings,
 } from "./schema";
 import { user } from "@/lib/auth/schema";
+import { createTestTicket } from "@/lib/test-helpers/tickets";
 
 describe("domain schema", () => {
   it("exposes the columns the review dashboard will rely on", () => {
@@ -233,7 +236,6 @@ describe("agents schema", () => {
 
 describe("workflow schema", () => {
   it("allows the triaged_out ticket status", async () => {
-    const { createTestTicket } = await import("@/lib/test-helpers/tickets");
     const ticketId = await createTestTicket({ status: "triaged_out" });
     const [row] = await db
       .select({ status: tickets.status })
@@ -244,8 +246,6 @@ describe("workflow schema", () => {
   });
 
   it("refuses two pending approvals on one graph thread", async () => {
-    const { createTestTicket } = await import("@/lib/test-helpers/tickets");
-    const { ticketApprovals } = await import("@/lib/db/schema");
     const ticketId = await createTestTicket({});
 
     await db.insert(ticketApprovals).values({
@@ -278,8 +278,6 @@ describe("workflow schema", () => {
   });
 
   it("allows a second approval once the first is decided", async () => {
-    const { createTestTicket } = await import("@/lib/test-helpers/tickets");
-    const { ticketApprovals } = await import("@/lib/db/schema");
     const ticketId = await createTestTicket({});
 
     const [first] = await db
@@ -312,7 +310,6 @@ describe("workflow schema", () => {
   });
 
   it("seeds exactly one workflow settings row", async () => {
-    const { workflowSettings } = await import("@/lib/db/schema");
     const rows = await db.select().from(workflowSettings);
 
     expect(rows).toHaveLength(1);
