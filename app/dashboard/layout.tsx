@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
-import { Logo } from "@/components/branding/logo";
+import { Logo, LogoMark } from "@/components/branding/logo";
 import { Nav } from "@/components/dashboard/nav";
 import { SignOutButton } from "@/components/dashboard/sign-out-button";
 import {
@@ -37,7 +37,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {/* Swap to the mark-only logo at rail width so the wordmark never clips. */}
           <div className="flex items-center truncate group-data-[collapsible=icon]:justify-center">
             <Logo className="group-data-[collapsible=icon]:hidden" />
-            <Logo variant="mark" className="hidden group-data-[collapsible=icon]:inline-flex" />
+            {/* Icon-only glyph shown at rail width. The full wordmark above
+                already carries the "Support Hub" accessible name, so this
+                bare mark (its svg is aria-hidden) is purely decorative rather
+                than a second element answering to the same name. */}
+            <LogoMark className="hidden size-5 group-data-[collapsible=icon]:inline-flex" />
           </div>
         </SidebarHeader>
         <SidebarContent>

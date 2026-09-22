@@ -15,7 +15,7 @@ const markSizeClasses = {
 // Abstract hub-and-spoke glyph: a center node with three connected points.
 // Pure currentColor strokes/fills so it works on any background and in both
 // themes, and stays legible once the sidebar collapses to rail width.
-function LogoMark({ className }: { className?: string }) {
+export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
       <path

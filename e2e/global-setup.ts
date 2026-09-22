@@ -33,6 +33,7 @@ const ADMIN_EMAILS = [
   "e2e-kb-admin@example.com",
   "e2e-tickets-admin@example.com",
   "e2e-agents-admin@example.com",
+  "e2e-email-admin@example.com",
 ];
 
 export default async function globalSetup(config: FullConfig): Promise<void> {
