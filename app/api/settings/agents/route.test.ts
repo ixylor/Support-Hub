@@ -7,7 +7,6 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
 const activateAgentPromptVersion = vi.fn();
 const updateAgentConfig = vi.fn();
-const listAgentConfigs = vi.fn();
 vi.mock("@/lib/agents/prompts", () => ({
   activateAgentPromptVersion: (...args: unknown[]) => activateAgentPromptVersion(...args),
 }));

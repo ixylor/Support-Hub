@@ -46,7 +46,7 @@ export const mailboxConnections = pgTable(
   },
   (table) => [
     // At most one mailbox is ever "active" — same one-row-per-key trick as
-    // prompt_templates' one-active-per-key index.
+    // ai_deployments_one_active_per_role.
     uniqueIndex("mailbox_connections_one_active")
       .on(table.status)
       .where(sql`${table.status} = 'active'`),
@@ -276,7 +276,7 @@ export const agentPromptVersions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Same one-row-per-key trick as prompt_templates_one_active_per_key: the
+    // Same one-row-per-key trick as ai_deployments_one_active_per_role: the
     // database refuses two active prompts for one agent even if the advisory
     // lock in lib/agents/prompts.ts is ever bypassed.
     uniqueIndex("agent_prompt_versions_one_active_per_agent")
@@ -354,9 +354,9 @@ export const aiDeployments = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    // Mirrors prompt_templates_one_active_per_key: the database itself refuses
-    // two active deployments for one role, backstopping the advisory lock in
-    // lib/ai/config.ts.
+    // Same one-row-per-key trick used elsewhere (see agent_prompt_versions_one_active_per_agent):
+    // the database itself refuses two active deployments for one role, backstopping the
+    // advisory lock in lib/ai/config.ts.
     uniqueIndex("ai_deployments_one_active_per_role")
       .on(table.role)
       .where(sql`${table.isActive} = true`),

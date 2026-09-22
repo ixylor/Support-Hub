@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { aiDeployments, agents } from "@/lib/db/schema";
 import { createTestUser } from "@/lib/test-helpers/users";

@@ -13,7 +13,7 @@ const agentLinks = [{ href: "/dashboard/tickets", label: "Tickets", icon: Inbox 
 const adminOnlyLinks = [
   { href: "/dashboard/knowledge-base", label: "Knowledge Base", icon: BookOpen },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/dashboard/settings/prompts", label: "Prompt Settings", icon: SlidersHorizontal },
+  { href: "/dashboard/settings/agents", label: "Agents", icon: SlidersHorizontal },
   { href: "/dashboard/settings/integrations", label: "Integrations", icon: Cable },
   { href: "/dashboard/settings/ai-provider", label: "AI Provider", icon: Bot },
 ];
