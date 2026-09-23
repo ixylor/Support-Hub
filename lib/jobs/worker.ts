@@ -8,7 +8,7 @@ async function main(): Promise<void> {
 
   // Every five minutes. pg-boss stores the schedule in its own tables, so this
   // is idempotent across worker restarts.
-  await boss.schedule(QUEUES.mailboxPoll, "*/5 * * * *");
+  await boss.schedule(QUEUES.mailboxPoll, "*/1 * * * *");
 
   console.log("Worker started.");
 

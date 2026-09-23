@@ -128,7 +128,12 @@ export function AgentCard({
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`model-${agent.key}`}>Model</Label>
-          <Select value={deploymentId} onValueChange={setDeploymentId}>
+          <Select
+            value={deploymentId}
+            onValueChange={(value) => {
+              if (value !== null) setDeploymentId(value);
+            }}
+          >
             <SelectTrigger id={`model-${agent.key}`} className="w-full">
               <SelectValue />
             </SelectTrigger>
