@@ -16,7 +16,7 @@ export default async function AiProviderSettingsPage() {
   return (
     <div className="max-w-3xl space-y-8">
       <div>
-        <h1 className="text-lg font-semibold">AI Provider</h1>
+        <h1 className="text-xl font-semibold">AI Provider</h1>
         <p className="text-muted-foreground text-sm">
           Azure OpenAI credentials and the model deployments this application uses.
         </p>

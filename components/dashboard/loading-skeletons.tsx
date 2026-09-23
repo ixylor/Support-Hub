@@ -29,7 +29,7 @@ export function DashboardLoadingSkeleton() {
   return (
     <LoadingShell label="Loading dashboard">
       <div className="mx-auto w-full max-w-6xl space-y-8">
-        <section className="relative overflow-hidden rounded-2xl border bg-card px-5 py-8 shadow-sm sm:px-8 sm:py-10">
+        <section className="relative overflow-hidden rounded-2xl border bg-card px-5 py-8 sm:px-8 sm:py-10">
           <Skeleton className="mb-5 h-5 w-28" />
           <Skeleton className="h-10 w-full max-w-2xl" />
           <Skeleton className="mt-3 h-5 w-full max-w-xl" />
@@ -43,7 +43,7 @@ export function DashboardLoadingSkeleton() {
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             {Array.from({ length: 3 }, (_, index) => (
-              <div key={index} className="rounded-xl border bg-card p-5 shadow-sm">
+              <div key={index} className="rounded-xl border bg-card p-5">
                 <div className="mb-8 flex items-center justify-between">
                   <Skeleton className="size-10 rounded-lg" />
                   <Skeleton className="size-4 rounded-full" />
@@ -71,7 +71,7 @@ export function TicketsLoadingSkeleton() {
             ))}
           </div>
         </div>
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-xl border bg-card">
           <div className="hidden items-center gap-6 border-b px-5 py-4 md:flex">
             {Array.from({ length: 7 }, (_, index) => (
               <Skeleton key={index} className={index === 0 ? "h-4 w-48" : "h-4 w-24"} />
@@ -152,7 +152,7 @@ export function SettingsLoadingSkeleton() {
     <LoadingShell label="Loading settings">
       <div className="mx-auto w-full max-w-3xl space-y-8">
         <PageHeadingSkeleton wide />
-        <section className="space-y-5 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
+        <section className="space-y-5 rounded-xl border bg-card p-5 sm:p-6">
           <div className="space-y-2">
             <Skeleton className="h-6 w-36" />
             <Skeleton className="h-4 w-full max-w-lg" />
@@ -167,7 +167,7 @@ export function SettingsLoadingSkeleton() {
           </div>
           <Skeleton className="h-10 w-28" />
         </section>
-        <section className="rounded-xl border bg-card p-5 shadow-sm sm:p-6">
+        <section className="rounded-xl border bg-card p-5 sm:p-6">
           <Skeleton className="h-6 w-44" />
           <div className="mt-5 space-y-3">
             {Array.from({ length: 3 }, (_, index) => (
@@ -185,7 +185,7 @@ export function SetupLoadingSkeleton() {
     <LoadingShell label="Loading setup checklist">
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <PageHeadingSkeleton wide />
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-xl border bg-card">
           <div className="flex items-start justify-between gap-4 border-b p-5 sm:p-6">
             <div className="space-y-2">
               <Skeleton className="h-6 w-40" />

@@ -54,16 +54,16 @@ function statusVariant(
 }
 
 function EntryIcon({ entry }: { entry: TimelineEntry }) {
-  if (entry.status === "pending") return <Clock3 className="size-4 text-amber-600" />;
+  if (entry.status === "pending") return <Clock3 className="size-4 text-warning" />;
   if (entry.status === "rejected") return <XCircle className="size-4 text-destructive" />;
   if (entry.status === "superseded") {
     return <RotateCcw className="size-4 text-muted-foreground" />;
   }
   if (entry.status === "auto_approved") {
-    return <MailCheck className="size-4 text-emerald-600" />;
+    return <MailCheck className="size-4 text-success" />;
   }
   if (entry.kind === "agent") return <Bot className="size-4 text-primary" />;
-  return <CheckCircle2 className="size-4 text-emerald-600" />;
+  return <CheckCircle2 className="size-4 text-success" />;
 }
 
 export function RunTimeline({ entries }: { entries: TimelineEntry[] }) {
@@ -94,7 +94,7 @@ export function RunTimeline({ entries }: { entries: TimelineEntry[] }) {
               Workflow activity
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {entries.length} {entries.length === 1 ? "event" : "events"} · inspect each step for details
+              <span className="tabular-nums">{entries.length}</span> {entries.length === 1 ? "event" : "events"} · inspect each step for details
             </p>
           </div>
           {filtered.length > 0 ? (
@@ -133,7 +133,7 @@ export function RunTimeline({ entries }: { entries: TimelineEntry[] }) {
                   <CircleDot className="text-muted-foreground" />
                 )}
               </EmptyMedia>
-              <EmptyTitle className="text-sm normal-case tracking-normal">
+              <EmptyTitle className="text-sm">
                 {entries.length > 0 ? "No matching events" : "No workflow runs yet"}
               </EmptyTitle>
               <EmptyDescription>
@@ -181,7 +181,7 @@ export function RunTimeline({ entries }: { entries: TimelineEntry[] }) {
                                 {statusLabel(entry.status)}
                               </Badge>
                             </span>
-                            <span className="mt-1 block text-[11px] text-muted-foreground">
+                            <span className="mt-1 block text-[11px] tabular-nums text-muted-foreground">
                               {dateFormatter.format(entry.at)}
                             </span>
                           </span>

@@ -2,11 +2,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function MetricSkeleton() {
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm">
+    <div className="rounded-xl border bg-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-3">
           <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-9 w-20" />
+          <Skeleton className="h-7 w-20" />
           <Skeleton className="h-3 w-36" />
         </div>
         <Skeleton className="size-10 rounded-lg" />
@@ -17,7 +17,7 @@ function MetricSkeleton() {
 
 function CardSkeleton({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+    <div className="overflow-hidden rounded-xl border bg-card">
       <div className="space-y-2 border-b p-5">
         <Skeleton className="h-5 w-40" />
         <Skeleton className="h-4 w-64 max-w-full" />
@@ -43,7 +43,7 @@ export default function AnalyticsLoading() {
       <span className="sr-only">Loading analytics…</span>
       <header className="space-y-3 border-b pb-6">
         <Skeleton className="h-3 w-28" />
-        <Skeleton className="h-9 w-44" />
+        <Skeleton className="h-7 w-44" />
         <Skeleton className="h-4 w-full max-w-2xl" />
       </header>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -36,7 +36,7 @@ export default async function IntegrationsSettingsPage({
 
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-4 text-lg font-semibold">Mailbox Integration</h1>
+      <h1 className="mb-4 text-xl font-semibold">Mailbox Integration</h1>
       {callbackError ? <p className="mb-4 text-sm text-destructive">{callbackError}</p> : null}
       <IntegrationsForm connection={connection} configuredProviders={configuredProviders} />
     </div>

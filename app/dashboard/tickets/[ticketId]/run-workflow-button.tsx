@@ -34,7 +34,7 @@ export function RunWorkflowButton({ ticketId }: { ticketId: string }) {
         {busy ? "Queueing..." : "Run workflow"}
       </Button>
       {status ? (
-        <span className={`max-w-72 text-xs ${status.startsWith("There is") || status.startsWith("This workflow") ? "text-amber-700" : "text-muted-foreground"}`}>
+        <span className={`max-w-72 text-xs ${status.startsWith("There is") || status.startsWith("This workflow") ? "text-warning" : "text-muted-foreground"}`}>
           {status}
         </span>
       ) : null}

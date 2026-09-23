@@ -117,7 +117,7 @@ export function MessageList({ messages }: { messages: MessageListItem[] }) {
               <span className="font-medium">{message.direction === "outbound" ? "Support" : message.senderEmail}</span>
               <span className="ml-2 text-xs text-muted-foreground">{message.direction === "outbound" ? "sent" : "received"}</span>
             </div>
-            <span className="text-xs text-muted-foreground">{message.sentAtLabel}</span>
+            <span className="text-xs tabular-nums text-muted-foreground">{message.sentAtLabel}</span>
           </CardHeader>
           <CardContent>
             <MessageBody body={message.body} />

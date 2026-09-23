@@ -101,8 +101,8 @@ export function UserManagement({ initialUsers }: { initialUsers: ManagedUser[] }
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
-        <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">Administration</p>
-        <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight">Users</h1>
+        <p className="text-xs text-muted-foreground">Administration</p>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">Users</h1>
         <p className="mt-1 text-sm text-muted-foreground">Add teammates, manage access, and reset credentials.</p>
       </div>
 
@@ -115,7 +115,7 @@ export function UserManagement({ initialUsers }: { initialUsers: ManagedUser[] }
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base normal-case tracking-tight">
+            <CardTitle className="flex items-center gap-2">
               <UsersRound className="size-4 text-primary" /> Team members
             </CardTitle>
             <CardDescription>Only admins can change roles or reset passwords.</CardDescription>
@@ -210,7 +210,7 @@ export function UserManagement({ initialUsers }: { initialUsers: ManagedUser[] }
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base normal-case tracking-tight">
+            <CardTitle className="flex items-center gap-2">
               <Plus className="size-4 text-primary" /> Add a teammate
             </CardTitle>
             <CardDescription>Create an account with a temporary password.</CardDescription>

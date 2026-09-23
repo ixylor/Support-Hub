@@ -110,13 +110,13 @@ export default async function TicketsPage({
       <div className="mx-auto w-full max-w-[1600px]">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">Inbox</p>
-            <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight">Tickets</h1>
+            <p className="text-xs text-muted-foreground">Inbox</p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight">Tickets</h1>
             <p className="mt-1 text-sm text-muted-foreground">Track, assign, and resolve customer conversations.</p>
           </div>
           {filterBar}
         </div>
-        <Empty className="min-h-72 rounded-xl border bg-card shadow-sm">
+        <Empty className="min-h-72 rounded-xl border bg-card">
           <EmptyHeader>
             <EmptyTitle>{filter === "all" ? "No tickets yet" : "Nothing here"}</EmptyTitle>
             <EmptyDescription>
@@ -146,16 +146,16 @@ export default async function TicketsPage({
     <div className="mx-auto w-full max-w-[1600px]">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">Inbox</p>
+          <p className="text-xs text-muted-foreground">Inbox</p>
           <div className="mt-1 flex items-baseline gap-3">
-            <h1 className="font-heading text-2xl font-semibold tracking-tight">Tickets</h1>
-            <span className="text-sm text-muted-foreground">{ticketRows.length} total</span>
+            <h1 className="text-xl font-semibold tracking-tight">Tickets</h1>
+            <span className="text-sm tabular-nums text-muted-foreground">{ticketRows.length} total</span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Track, assign, and resolve customer conversations.</p>
         </div>
         {filterBar}
       </div>
-      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="overflow-hidden rounded-xl border bg-card">
       <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
@@ -205,8 +205,8 @@ export default async function TicketsPage({
                   <span className="text-muted-foreground">Unassigned</span>
                 )}
               </TableCell>
-              <TableCell className="text-right">{ticket.messageCount}</TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell className="text-right tabular-nums">{ticket.messageCount}</TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">
                 {dateFormatter.format(ticket.lastMessageAt)}
               </TableCell>
               {isAdmin ? (

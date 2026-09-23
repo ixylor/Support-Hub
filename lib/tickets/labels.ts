@@ -42,4 +42,16 @@ export const PRIORITY_VARIANTS: Record<TicketPriority, BadgeVariant> = {
   urgent: "destructive",
 };
 
+// Shared with the analytics status bars and the ticket-health chart so a
+// status always renders as the same colour everywhere it appears.
+export const STATUS_DOT_COLORS: Record<TicketStatus, string> = {
+  new: "bg-info",
+  pending_review: "bg-warning",
+  approved: "bg-success",
+  escalated: "bg-destructive",
+  resolved: "bg-muted-foreground",
+  waiting_on_customer: "bg-chart-4",
+  triaged_out: "bg-muted-foreground/50",
+};
+
 export const PRIORITIES = tickets.priority.enumValues;

@@ -32,11 +32,11 @@ export default function LoginPage() {
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/30 p-4 sm:p-6">
       <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
       <div className="pointer-events-none absolute -right-24 -bottom-24 size-72 rounded-full bg-primary/10 blur-3xl" />
-      <Card className="relative w-full max-w-md shadow-lg shadow-primary/5">
+      <Card className="relative w-full max-w-md">
         <CardHeader className="gap-4 border-b pb-6 text-center">
           <Logo size="lg" className="justify-center text-primary" />
           <div>
-            <CardTitle className="text-xl normal-case tracking-tight">Welcome back</CardTitle>
+            <CardTitle className="text-xl">Welcome back</CardTitle>
             <CardDescription className="mt-1">Sign in to your support workspace.</CardDescription>
           </div>
         </CardHeader>

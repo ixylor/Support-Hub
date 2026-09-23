@@ -92,7 +92,7 @@ export default async function TicketThreadPage({
 
       <div className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold">{ticket.subject}</h1>
+          <h1 className="text-xl font-semibold">{ticket.subject}</h1>
           <p className="text-sm text-muted-foreground">{ticket.requesterEmail}</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
@@ -121,7 +121,7 @@ export default async function TicketThreadPage({
         <CardHeader className="border-b bg-muted/30 px-4 py-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">Ticket details</p>
+              <p className="text-xs text-muted-foreground">Ticket details</p>
               <CardTitle className="mt-1 text-base">Ownership</CardTitle>
             </div>
             {isAdmin ? (
@@ -136,30 +136,30 @@ export default async function TicketThreadPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-4 px-4 py-4">
           <div className="rounded-md border bg-background p-3">
-            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Assigned agent</p>
+            <p className="text-xs text-muted-foreground">Assigned agent</p>
             <p className="mt-1 text-sm font-medium">{ticket.assignee?.name ?? "Unassigned"}</p>
             <p className="mt-1 text-xs text-muted-foreground">{ticket.assignee ? "Responsible for the next action" : "Assign an owner to make this ticket visible to an agent"}</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-md border bg-background p-3">
-              <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Priority</p>
+              <p className="text-xs text-muted-foreground">Priority</p>
               <div className="mt-2">{ticket.priority ? <Badge variant={PRIORITY_VARIANTS[ticket.priority]}>{PRIORITY_LABELS[ticket.priority]}</Badge> : <span className="text-xs text-muted-foreground">Not set</span>}</div>
             </div>
             <div className="rounded-md border bg-background p-3">
-              <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Messages</p>
-              <p className="mt-2 text-sm font-medium">{ticket.messages.length}</p>
+              <p className="text-xs text-muted-foreground">Messages</p>
+              <p className="mt-2 text-sm font-medium tabular-nums">{ticket.messages.length}</p>
             </div>
           </div>
 
           <div className="rounded-md border bg-background p-3">
-            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Requester</p>
+            <p className="text-xs text-muted-foreground">Requester</p>
             <p className="mt-1 break-all text-sm">{ticket.requesterEmail}</p>
           </div>
 
           {history.length > 0 ? (
             <Collapsible>
-              <CollapsibleTrigger className="flex w-full items-center justify-between border-t pt-4 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase hover:text-foreground">
-                Assignment history <span>({history.length})</span>
+              <CollapsibleTrigger className="flex w-full items-center justify-between border-t pt-4 text-left text-xs font-medium text-muted-foreground hover:text-foreground">
+                Assignment history <span className="tabular-nums">({history.length})</span>
               </CollapsibleTrigger>
               <CollapsibleContent>
               <ol className="mt-3 flex flex-col gap-3">
@@ -183,7 +183,7 @@ export default async function TicketThreadPage({
                     {entry.remark ? (
                       <p className="mt-1 border-l-2 pl-3 text-muted-foreground">{entry.remark}</p>
                     ) : null}
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs tabular-nums text-muted-foreground">
                       {dateFormatter.format(entry.createdAt)}
                     </p>
                 </li>

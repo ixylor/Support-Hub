@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Noto_Serif, Public_Sans } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
-
-const publicSansHeading = Public_Sans({subsets:['latin'],variable:'--font-heading'});
-
-const notoSerif = Noto_Serif({subsets:['latin'],variable:'--font-serif'});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-serif", notoSerif.variable, publicSansHeading.variable)}
+      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable)}
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider>{children}</TooltipProvider>

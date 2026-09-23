@@ -27,7 +27,7 @@ export default async function AgentSettingsPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="text-lg font-semibold">Agents</h1>
+        <h1 className="text-xl font-semibold">Agents</h1>
         <p className="text-sm text-muted-foreground">
           Each step of the ticket workflow is handled by one agent. Editing a prompt saves a new
           version; the previous one is kept.

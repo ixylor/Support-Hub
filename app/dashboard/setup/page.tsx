@@ -89,8 +89,8 @@ export default async function SetupPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <div>
-        <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">First-time setup</p>
-        <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight">
+        <p className="text-xs text-muted-foreground">First-time setup</p>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">
           Let&apos;s get Support Hub ready.
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -103,8 +103,8 @@ export default async function SetupPage() {
         <CardHeader className="border-b">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle className="text-base normal-case tracking-tight">Setup checklist</CardTitle>
-              <CardDescription className="mt-1">
+              <CardTitle>Setup checklist</CardTitle>
+              <CardDescription className="mt-1 tabular-nums">
                 {complete} of {steps.length} required steps complete
               </CardDescription>
             </div>
@@ -127,8 +127,8 @@ export default async function SetupPage() {
               <span
                 className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
                   stepReady
-                    ? "bg-emerald-500/10 text-emerald-600"
-                    : "bg-amber-500/10 text-amber-600"
+                    ? "bg-success-subtle text-success"
+                    : "bg-warning-subtle text-warning"
                 }`}
               >
                 {stepReady ? <CheckCircle2 className="size-5" /> : <Icon className="size-5" />}
@@ -160,7 +160,7 @@ export default async function SetupPage() {
       </Card>
 
       {ready ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-success/30 bg-success-subtle p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium">Your workspace is ready.</p>
             <p className="mt-1 text-sm text-muted-foreground">

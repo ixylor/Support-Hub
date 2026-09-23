@@ -60,7 +60,7 @@ function QuestionnaireTitle({
     <QuestionnairePrimitive.Title
       data-slot="questionnaire-title"
       className={cn(
-        "font-heading text-xs font-semibold tracking-wide text-pretty uppercase [&:not(:has(~[data-slot=questionnaire-description]))]:mb-5",
+        "text-sm font-semibold text-pretty [&:not(:has(~[data-slot=questionnaire-description]))]:mb-5",
         className
       )}
       {...props}

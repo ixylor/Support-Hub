@@ -82,30 +82,44 @@ export function ApprovalPanel({
   }
 
   const overrideLabel = OVERRIDE_LABELS[kind] ?? null;
+  const isCloseApproval = kind === "close";
   const resolved = approvalState === "resolved";
 
   return (
     <Card data-testid="approval-panel" className="mb-6" size="sm">
       <CardHeader className="flex flex-row items-baseline justify-between gap-4">
         <CardTitle className="flex items-center gap-2 text-sm">
-          {resolved ? "Approval recorded" : "Waiting for approval"}
+          {resolved
+            ? isCloseApproval
+              ? "Ticket resolution recorded"
+              : "Approval recorded"
+            : isCloseApproval
+              ? "Ready to resolve"
+              : "Waiting for approval"}
           <Badge variant={resolved ? "default" : "secondary"}>
             {resolved ? <><CheckCircle2 className="size-3" /> Resolved</> : "Action required"}
           </Badge>
         </CardTitle>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {Math.round(confidence * 100)}% confidence
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {resolved ? (
           <p className="text-sm text-muted-foreground" role="status">
-            This approval is no longer actionable. The workflow will continue using the recorded decision.
+            {isCloseApproval
+              ? "This ticket is resolved. The workflow will continue using the recorded decision."
+              : "This approval is no longer actionable. The workflow will continue using the recorded decision."}
           </p>
         ) : null}
         {proposal.body ? (
-          <div className="whitespace-pre-wrap border-l-2 border-primary/40 pl-4 text-sm leading-relaxed">
+          <div>
+            {isCloseApproval ? (
+              <p className="mb-2 text-xs text-muted-foreground">Reply already sent</p>
+            ) : null}
+            <div className="whitespace-pre-wrap border-l-2 border-primary/40 pl-4 text-sm leading-relaxed">
             {proposal.body}
+            </div>
           </div>
         ) : (
           <p className="text-sm leading-relaxed">{proposal.reason}</p>
@@ -170,7 +184,7 @@ export function ApprovalPanel({
         {!resolved && mode === "idle" ? (
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => decide({ decision: "approve" })}>
-              Approve
+              {isCloseApproval ? "Resolve ticket" : "Approve"}
             </Button>
             {proposal.body ? (
               <Button variant="outline" disabled={busy} onClick={() => setMode("edit")}>

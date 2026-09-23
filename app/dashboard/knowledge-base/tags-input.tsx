@@ -74,7 +74,7 @@ export function TagsInput({
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor={inputId}
-          className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+          className="text-xs font-medium text-muted-foreground"
         >
           {label}
         </label>

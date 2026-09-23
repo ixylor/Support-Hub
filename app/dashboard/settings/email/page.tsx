@@ -14,7 +14,7 @@ export default async function EmailSettingsPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="mb-1 text-lg font-semibold">Email</h1>
+      <h1 className="mb-1 text-xl font-semibold">Email</h1>
       <p className="mb-4 text-sm text-muted-foreground">
         Outgoing mail settings. Send a test message before relying on these — a wrong password
         should not be discovered from a customer&apos;s ticket.

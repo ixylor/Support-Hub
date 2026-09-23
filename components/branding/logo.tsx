@@ -53,7 +53,7 @@ export function Logo({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 font-heading font-semibold tracking-tight",
+        "inline-flex items-center gap-2 font-semibold tracking-tight",
         sizeClasses[size],
         className
       )}
