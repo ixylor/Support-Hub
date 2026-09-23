@@ -2,7 +2,7 @@ import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
 import { tickets } from "@/lib/db/schema";
 
-type TicketStatus = (typeof tickets.status.enumValues)[number];
+export type TicketStatus = (typeof tickets.status.enumValues)[number];
 type TicketPriority = (typeof tickets.priority.enumValues)[number];
 type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
 

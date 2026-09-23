@@ -6,8 +6,6 @@ import { listTickets, type TicketListFilter, type TicketViewer } from "@/lib/tic
 import {
   PRIORITY_LABELS,
   PRIORITY_VARIANTS,
-  STATUS_LABELS,
-  STATUS_VARIANTS,
 } from "@/lib/tickets/labels";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -20,7 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { AssigneePicker, PriorityPicker } from "./ticket-pickers";
+import { AssigneePicker, PriorityPicker, StatusPicker } from "./ticket-pickers";
+import { DeleteTicket } from "./[ticketId]/delete-ticket";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -167,6 +166,7 @@ export default async function TicketsPage({
             <TableHead>Assignee</TableHead>
             <TableHead className="text-right">Messages</TableHead>
             <TableHead>Last activity</TableHead>
+            {isAdmin ? <TableHead className="text-right">Actions</TableHead> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -179,9 +179,7 @@ export default async function TicketsPage({
               </TableCell>
               <TableCell className="text-muted-foreground">{ticket.requesterEmail}</TableCell>
               <TableCell>
-                <Badge variant={STATUS_VARIANTS[ticket.status]}>
-                  {STATUS_LABELS[ticket.status]}
-                </Badge>
+                <StatusPicker ticketId={ticket.id} currentStatus={ticket.status} isAdmin={isAdmin} />
               </TableCell>
               <TableCell>
                 {isAdmin ? (
@@ -211,6 +209,20 @@ export default async function TicketsPage({
               <TableCell className="text-muted-foreground">
                 {dateFormatter.format(ticket.lastMessageAt)}
               </TableCell>
+              {isAdmin ? (
+                <TableCell className="text-right">
+                  {ticket.status === "resolved" || ticket.status === "triaged_out" ? (
+                    <DeleteTicket ticketId={ticket.id} compact />
+                  ) : (
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title="Complete the ticket before deleting it"
+                    >
+                      —
+                    </span>
+                  )}
+                </TableCell>
+              ) : null}
             </TableRow>
           ))}
         </TableBody>

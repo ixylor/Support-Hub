@@ -10,8 +10,6 @@ import {
 import {
   PRIORITY_LABELS,
   PRIORITY_VARIANTS,
-  STATUS_LABELS,
-  STATUS_VARIANTS,
 } from "@/lib/tickets/labels";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +23,7 @@ import { RunTimeline } from "./run-timeline";
 import { RunWorkflowButton } from "./run-workflow-button";
 import { ManualReply } from "./manual-reply";
 import { DeleteTicket } from "./delete-ticket";
+import { StatusPicker } from "../ticket-pickers";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -98,7 +97,7 @@ export default async function TicketThreadPage({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
           {isAdmin ? <RunWorkflowButton ticketId={ticket.id} /> : null}
-          <Badge variant={STATUS_VARIANTS[ticket.status]}>{STATUS_LABELS[ticket.status]}</Badge>
+          <StatusPicker ticketId={ticket.id} currentStatus={ticket.status} isAdmin={isAdmin} />
           {isAdmin && (ticket.status === "resolved" || ticket.status === "triaged_out") ? (
             <DeleteTicket ticketId={ticket.id} />
           ) : null}

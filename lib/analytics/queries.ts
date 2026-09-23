@@ -64,6 +64,13 @@ function approvalLabel(kind: string): string {
     .join(" ");
 }
 
+// PostgreSQL timestamp expressions such as coalesce/max may be returned as
+// ISO strings by the driver even when their Drizzle type is Date. Normalize at
+// the boundary before the values reach date formatters or sort callbacks.
+function asDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
 export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
   const [
     ticketStatusRows,
@@ -168,7 +175,7 @@ export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
       kind: "workflow" as const,
       label: row.label,
       detail: `Ran ${row.model}`,
-      at: row.at,
+      at: asDate(row.at),
     })),
     ...recentApprovalRows.map((row) => ({
       id: `approval-${row.id}`,
@@ -181,7 +188,7 @@ export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
           : row.decision
             ? row.decision.replaceAll("_", " ")
             : row.status,
-      at: row.at,
+      at: asDate(row.at),
     })),
   ]
     .sort((left, right) => right.at.getTime() - left.at.getTime())
@@ -221,7 +228,7 @@ export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
       id: row.id,
       name: row.name ?? "Workflow agent",
       calls: Number(row.calls),
-      lastRunAt: row.lastRunAt,
+      lastRunAt: row.lastRunAt ? asDate(row.lastRunAt) : null,
     })),
     recentActivity,
   };

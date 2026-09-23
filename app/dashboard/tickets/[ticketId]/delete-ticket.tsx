@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-export function DeleteTicket({ ticketId }: { ticketId: string }) {
+export function DeleteTicket({ ticketId, compact = false }: { ticketId: string; compact?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +28,18 @@ export function DeleteTicket({ ticketId }: { ticketId: string }) {
   return (
     <div className="flex flex-col items-end gap-1">
       <AlertDialog>
-        <AlertDialogTrigger render={<Button variant="destructive" size="sm" disabled={busy} />}>
-          <Trash2 /> {busy ? "Deleting…" : "Delete permanently"}
+        <AlertDialogTrigger
+          render={
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={busy}
+              title="Delete ticket permanently"
+            />
+          }
+        >
+          <Trash2 />
+          <span>{busy ? "Deleting…" : compact ? "Delete" : "Delete permanently"}</span>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>

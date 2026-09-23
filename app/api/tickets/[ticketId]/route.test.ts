@@ -2,7 +2,7 @@ import { mkdir, access, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { DELETE } from "./route";
+import { DELETE, PATCH } from "./route";
 import { db } from "@/lib/db/client";
 import {
   attachments,
@@ -29,6 +29,14 @@ function context(ticketId: string) {
 
 function request(): Request {
   return new Request("http://localhost/api/tickets/ticket-id", { method: "DELETE" });
+}
+
+function patchRequest(status: string): Request {
+  return new Request("http://localhost/api/tickets/ticket-id", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
 }
 
 describe("DELETE /api/tickets/[ticketId]", () => {
@@ -215,5 +223,96 @@ describe("DELETE /api/tickets/[ticketId]", () => {
 
     expect((await DELETE(request(), context("not-a-uuid"))).status).toBe(404);
     expect((await DELETE(request(), context(crypto.randomUUID()))).status).toBe(404);
+  });
+});
+
+describe("PATCH /api/tickets/[ticketId]", () => {
+  let connectionId: string;
+  let adminId: string;
+  let agentId: string;
+
+  async function createUser(role: "admin" | "agent"): Promise<string> {
+    const id = `status-route-test-${crypto.randomUUID()}`;
+    const email = `status-route-test-${crypto.randomUUID()}@example.com`;
+    const [row] = await db.execute(sql`
+      INSERT INTO "user" ("id", "name", "email", "role")
+      VALUES (${id}, ${`${role} status test user`}, ${email}, ${role})
+      RETURNING "id"
+    `);
+    return String(row.id);
+  }
+
+  async function createTicket(status: "new" | "resolved"): Promise<string> {
+    const [row] = await db
+      .insert(tickets)
+      .values({
+        subject: "Status route test",
+        requesterEmail: "customer@example.com",
+        status,
+        assignedToUserId: agentId,
+        mailboxConnectionId: connectionId,
+        providerThreadId: crypto.randomUUID(),
+      })
+      .returning({ id: tickets.id });
+    return row.id;
+  }
+
+  beforeAll(async () => {
+    adminId = await createUser("admin");
+    agentId = await createUser("agent");
+    const [connection] = await db
+      .insert(mailboxConnections)
+      .values({
+        provider: "microsoft",
+        mailboxAddress: "status-test@example.com",
+        encryptedRefreshToken: "unused",
+        connectedByUserId: adminId,
+        status: "disconnected",
+      })
+      .returning({ id: mailboxConnections.id });
+    connectionId = connection.id;
+  });
+
+  afterEach(async () => {
+    vi.clearAllMocks();
+    await db.delete(tickets).where(eq(tickets.mailboxConnectionId, connectionId));
+  });
+
+  afterAll(async () => {
+    await db.delete(mailboxConnections).where(eq(mailboxConnections.id, connectionId));
+    await db.delete(user).where(eq(user.id, adminId));
+    await db.delete(user).where(eq(user.id, agentId));
+  });
+
+  it("lets an assigned agent mark a ticket completed", async () => {
+    const ticketId = await createTicket("new");
+    mocks.getSession.mockResolvedValue({ user: { id: agentId, role: "agent" } });
+
+    const response = await PATCH(patchRequest("resolved"), context(ticketId));
+
+    expect(response.status).toBe(200);
+    const [ticket] = await db.select({ status: tickets.status }).from(tickets).where(eq(tickets.id, ticketId));
+    expect(ticket.status).toBe("resolved");
+  });
+
+  it("lets admins change an active ticket status", async () => {
+    const ticketId = await createTicket("new");
+    mocks.getSession.mockResolvedValue({ user: { id: adminId, role: "admin" } });
+
+    const response = await PATCH(patchRequest("escalated"), context(ticketId));
+
+    expect(response.status).toBe(200);
+    const [ticket] = await db.select({ status: tickets.status }).from(tickets).where(eq(tickets.id, ticketId));
+    expect(ticket.status).toBe("escalated");
+  });
+
+  it("does not let agents set arbitrary statuses or reopen completed tickets", async () => {
+    const activeTicketId = await createTicket("new");
+    mocks.getSession.mockResolvedValue({ user: { id: agentId, role: "agent" } });
+
+    expect((await PATCH(patchRequest("escalated"), context(activeTicketId))).status).toBe(403);
+
+    const completedTicketId = await createTicket("resolved");
+    expect((await PATCH(patchRequest("new"), context(completedTicketId))).status).toBe(409);
   });
 });
