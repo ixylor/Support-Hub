@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
 import { listAgentConfigs } from "@/lib/agents/config";
 import { listDeployments } from "@/lib/ai/config";
+import { getWorkflowSettings } from "@/lib/workflow/settings";
 import { AgentCard } from "./agent-card";
+import { WorkflowPanel } from "./workflow-panel";
 
 export default async function AgentSettingsPage() {
   // The nav hides this link from non-admins, but that alone doesn't stop
@@ -13,7 +15,11 @@ export default async function AgentSettingsPage() {
     redirect("/dashboard");
   }
 
-  const [agents, deployments] = await Promise.all([listAgentConfigs(), listDeployments()]);
+  const [agents, deployments, workflowSettings] = await Promise.all([
+    listAgentConfigs(),
+    listDeployments(),
+    getWorkflowSettings(),
+  ]);
   const chatDeployments = deployments
     .filter((deployment) => deployment.role === "chat")
     .map((deployment) => ({ id: deployment.id, deploymentName: deployment.deploymentName }));
@@ -27,6 +33,7 @@ export default async function AgentSettingsPage() {
           version; the previous one is kept.
         </p>
       </div>
+      <WorkflowPanel initial={workflowSettings} />
       {agents.map((agent) => (
         <AgentCard key={agent.key} agent={agent} deployments={chatDeployments} />
       ))}
