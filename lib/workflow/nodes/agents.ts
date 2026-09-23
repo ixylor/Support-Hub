@@ -1,4 +1,5 @@
 import type { ChatClient } from "@/lib/ai/chat";
+import { normalizeEmailBody } from "@/lib/mail/format";
 import { runAgent } from "../run-agent";
 import type { RouteResult, TriageResult, WorkflowState } from "../state";
 import { formatThread, newestInbound } from "./context";
@@ -129,6 +130,7 @@ export async function drafterNode(
       feedbackSection(state.feedback),
       "",
       "Return exactly one JSON object matching the response schema. Put the complete customer email in body, cite only retrieved passage ids in citedChunkIds, and set confidence between 0 and 1.",
+      "Write complete sentences in plain text. Do not hard-wrap sentences across lines. Use one blank line between paragraphs and keep any list formatting consistent.",
     ].join("\n"),
     schemaName: "draft",
     schema: DRAFT_SCHEMA,
@@ -144,7 +146,7 @@ export async function drafterNode(
   return {
     outbound: {
       kind: "answer",
-      body: result.body,
+      body: normalizeEmailBody(result.body),
       citedChunkIds: result.citedChunkIds.filter((id) => retrievedIds.has(id)),
       confidence: result.confidence,
     },
@@ -169,6 +171,7 @@ export async function infoRequesterNode(
       feedbackSection(state.feedback),
       "",
       "Return exactly one JSON object matching the response schema. Put the complete customer question in body and set confidence between 0 and 1.",
+      "Write complete sentences in plain text. Do not hard-wrap sentences across lines. Use one blank line between paragraphs.",
     ].join("\n"),
     schemaName: "question",
     schema: QUESTION_SCHEMA,
@@ -180,7 +183,7 @@ export async function infoRequesterNode(
   return {
     outbound: {
       kind: "question",
-      body: result.body,
+      body: normalizeEmailBody(result.body),
       citedChunkIds: [],
       confidence: result.confidence,
     },

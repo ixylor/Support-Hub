@@ -24,6 +24,7 @@ import { RunWorkflowButton } from "./run-workflow-button";
 import { ManualReply } from "./manual-reply";
 import { DeleteTicket } from "./delete-ticket";
 import { StatusPicker } from "../ticket-pickers";
+import { LiveTicketRefresh } from "./live-ticket-refresh";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -86,6 +87,7 @@ export default async function TicketThreadPage({
 
   return (
     <div className="min-w-0 max-w-[1600px]">
+      <LiveTicketRefresh />
       <Link href="/dashboard/tickets" className="text-sm text-muted-foreground hover:underline">
         &larr; Back to tickets
       </Link>

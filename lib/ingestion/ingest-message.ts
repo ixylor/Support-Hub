@@ -1,6 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { attachments, ticketMessages, tickets } from "@/lib/db/schema";
+import {
+  attachments,
+  deletedGoogleThreads,
+  mailboxConnections,
+  ticketMessages,
+  tickets,
+} from "@/lib/db/schema";
 import { enqueue } from "@/lib/jobs/boss";
 import { QUEUES } from "@/lib/jobs/queues";
 import { supersedePendingApprovals } from "@/lib/workflow/approvals";
@@ -24,6 +30,25 @@ export async function ingestMessage(
     return; // Already ingested — overlapping poll window.
   }
 
+  const [connection] = await db
+    .select({ provider: mailboxConnections.provider, mailboxAddress: mailboxConnections.mailboxAddress })
+    .from(mailboxConnections)
+    .where(eq(mailboxConnections.id, mailboxConnectionId))
+    .limit(1);
+  if (connection?.provider === "google") {
+    const [deletedThread] = await db
+      .select({ id: deletedGoogleThreads.id })
+      .from(deletedGoogleThreads)
+      .where(
+        and(
+          eq(deletedGoogleThreads.mailboxAddress, connection.mailboxAddress.trim().toLowerCase()),
+          eq(deletedGoogleThreads.providerThreadId, message.providerThreadId)
+        )
+      )
+      .limit(1);
+    if (deletedThread) return;
+  }
+
   // Download and persist attachments to disk before touching the database so
   // that a failure here never leaves a half-ingested ticket or message row
   // behind. The per-message directory is keyed on the provider message id
@@ -43,16 +68,116 @@ export async function ingestMessage(
   }
 
   const ingested = await db.transaction(async (tx) => {
-    const [existingTicket] = await tx
-      .select({ id: tickets.id, status: tickets.status })
-      .from(tickets)
-      .where(
-        and(
-          eq(tickets.mailboxConnectionId, mailboxConnectionId),
-          eq(tickets.providerThreadId, message.providerThreadId)
-        )
-      )
+    const [currentConnection] = await tx
+      .select({ provider: mailboxConnections.provider, mailboxAddress: mailboxConnections.mailboxAddress })
+      .from(mailboxConnections)
+      .where(eq(mailboxConnections.id, mailboxConnectionId))
       .limit(1);
+
+    if (currentConnection?.provider === "google") {
+      // Serialize ingestion against deletion for this mailbox/thread. This
+      // closes the race where polling read "not deleted" just before an admin
+      // committed the tombstone.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${currentConnection.mailboxAddress.trim().toLowerCase()}), hashtext(${message.providerThreadId}))`
+      );
+    }
+
+    // Recheck inside the write transaction in case deletion raced with this
+    // poll after the early return above.
+    if (currentConnection?.provider === "google") {
+      const [deletedThread] = await tx
+        .select({ id: deletedGoogleThreads.id })
+        .from(deletedGoogleThreads)
+        .where(
+          and(
+            eq(deletedGoogleThreads.mailboxAddress, currentConnection.mailboxAddress.trim().toLowerCase()),
+            eq(deletedGoogleThreads.providerThreadId, message.providerThreadId)
+          )
+        )
+        .limit(1);
+      if (deletedThread) return null;
+    }
+
+    // Gmail can expose a different native thread id for a message that still
+    // belongs to an existing RFC email conversation. Follow its parent ids so
+    // the reply stays on the ticket that already contains that message.
+    let existingTicket: { id: string; status: (typeof tickets.status.enumValues)[number] } | undefined;
+    const parentMessageIds = [
+      message.inReplyToHeader,
+      ...(message.referencesHeader?.split(/\s+/).reverse() ?? []),
+    ].filter((value): value is string => Boolean(value));
+
+    for (const parentMessageId of parentMessageIds) {
+      const [relatedTicket] = await tx
+        .select({ id: tickets.id, status: tickets.status })
+        .from(ticketMessages)
+        .innerJoin(tickets, eq(ticketMessages.ticketId, tickets.id))
+        .where(
+          and(
+            eq(ticketMessages.messageIdHeader, parentMessageId),
+            eq(tickets.mailboxConnectionId, mailboxConnectionId)
+          )
+        )
+        .limit(1);
+
+      if (relatedTicket) {
+        existingTicket = relatedTicket;
+        break;
+      }
+
+      // Reconnecting the same Google mailbox creates a new connection row.
+      // Gmail's thread is still the same conversation, so consult prior
+      // Google connection rows for RFC parent message IDs as well.
+      if (currentConnection?.provider === "google") {
+        const [googleRelatedTicket] = await tx
+          .select({ id: tickets.id, status: tickets.status })
+          .from(ticketMessages)
+          .innerJoin(tickets, eq(ticketMessages.ticketId, tickets.id))
+          .innerJoin(mailboxConnections, eq(tickets.mailboxConnectionId, mailboxConnections.id))
+          .where(
+            and(
+              eq(ticketMessages.messageIdHeader, parentMessageId),
+              eq(mailboxConnections.provider, "google"),
+              eq(mailboxConnections.mailboxAddress, currentConnection.mailboxAddress)
+            )
+          )
+          .limit(1);
+
+        if (googleRelatedTicket) {
+          existingTicket = googleRelatedTicket;
+          break;
+        }
+      }
+    }
+
+    if (!existingTicket) {
+      [existingTicket] = await tx
+        .select({ id: tickets.id, status: tickets.status })
+        .from(tickets)
+        .where(
+          and(
+            eq(tickets.mailboxConnectionId, mailboxConnectionId),
+            eq(tickets.providerThreadId, message.providerThreadId)
+          )
+        )
+        .limit(1);
+    }
+
+    if (!existingTicket && currentConnection?.provider === "google") {
+      [existingTicket] = await tx
+        .select({ id: tickets.id, status: tickets.status })
+        .from(tickets)
+        .innerJoin(mailboxConnections, eq(tickets.mailboxConnectionId, mailboxConnections.id))
+        .where(
+          and(
+            eq(mailboxConnections.provider, "google"),
+            eq(mailboxConnections.mailboxAddress, currentConnection.mailboxAddress),
+            eq(tickets.providerThreadId, message.providerThreadId)
+          )
+        )
+        .limit(1);
+    }
 
     let ticketId: string;
     let isReply = Boolean(existingTicket);

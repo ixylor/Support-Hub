@@ -43,7 +43,10 @@ export function newestInbound(thread: ThreadMessage[]): ThreadMessage | null {
 
 export async function loadContextNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
   const [ticket] = await db
-    .select({ subject: tickets.subject, requesterEmail: tickets.requesterEmail })
+    .select({
+      subject: tickets.subject,
+      requesterEmail: tickets.requesterEmail,
+    })
     .from(tickets)
     .where(eq(tickets.id, state.ticketId))
     .limit(1);

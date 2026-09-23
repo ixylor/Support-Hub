@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Cable, Inbox, Mail, SlidersHorizontal, BookOpen, UsersRound, UserCog } from "lucide-react";
+import { BarChart3, Bot, Cable, Inbox, Mail, SlidersHorizontal, BookOpen, UsersRound } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -11,7 +11,6 @@ import {
 
 const agentLinks = [
   { href: "/dashboard/tickets", label: "Tickets", icon: Inbox },
-  { href: "/dashboard/settings/account", label: "My account", icon: UserCog },
 ];
 const adminOnlyLinks = [
   { href: "/dashboard/knowledge-base", label: "Knowledge Base", icon: BookOpen },
@@ -38,7 +37,7 @@ export function Nav({ role }: { role: "agent" | "admin" }) {
           <SidebarMenuItem key={link.href}>
             <SidebarMenuButton isActive={isActive} tooltip={link.label} render={<Link href={link.href} />}>
               <Icon />
-              <span>{link.label}</span>
+              <span className="group-data-[collapsible=icon]:hidden">{link.label}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         );

@@ -92,6 +92,11 @@ export async function sendNode(
   }
 
   const body = verdict.decision === "edit" && verdict.editedBody ? verdict.editedBody : state.outbound.body;
+  const [ticketThread] = await db
+    .select({ providerThreadId: tickets.providerThreadId })
+    .from(tickets)
+    .where(eq(tickets.id, state.ticketId))
+    .limit(1);
 
   // Thread onto the newest inbound message so the customer's mail client
   // keeps the conversation together.
@@ -109,12 +114,13 @@ export async function sendNode(
     }
   }
 
-  let sent: { providerMessageId: string; messageIdHeader: string };
+  let sent: { providerMessageId: string; messageIdHeader: string | null };
   try {
     sent = await transport.send({
       to: state.requesterEmail,
       subject: replySubject(state.subject),
       bodyText: body,
+      threadId: ticketThread?.providerThreadId ?? null,
       inReplyTo,
       references,
     });

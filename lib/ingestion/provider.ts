@@ -16,6 +16,7 @@ export interface ProviderMessage {
   // the message to an API, but they do not create an email thread.
   messageIdHeader?: string | null;
   inReplyToHeader?: string | null;
+  referencesHeader?: string | null;
 }
 
 export interface FetchMessagesResult {

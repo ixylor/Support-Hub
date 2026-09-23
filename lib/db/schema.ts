@@ -54,6 +54,25 @@ export const mailboxConnections = pgTable(
   ]
 );
 
+// Gmail's date-based polling can return a message more than once. Keep a
+// durable marker for intentionally deleted conversations so removing their
+// ticket/message rows doesn't make a later poll recreate the same thread.
+export const deletedGoogleThreads = pgTable(
+  "deleted_google_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mailboxAddress: text("mailbox_address").notNull(),
+    providerThreadId: text("provider_thread_id").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("deleted_google_threads_mailbox_thread_idx").on(
+      table.mailboxAddress,
+      table.providerThreadId
+    ),
+  ]
+);
+
 export const ticketStatusEnum = pgEnum("ticket_status", [
   "new",
   "pending_review",

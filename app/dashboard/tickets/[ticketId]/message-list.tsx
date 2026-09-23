@@ -109,6 +109,7 @@ export function MessageList({ messages }: { messages: MessageListItem[] }) {
           <h2 className="text-sm font-semibold">Email thread</h2>
           <p className="text-xs text-muted-foreground">{messages.length} message{messages.length === 1 ? "" : "s"}</p>
         </div>
+        <span className="text-xs text-muted-foreground">Auto-updates every 15 seconds</span>
       </div>
       {messages.map((message) => (
         <Card key={message.id} className={message.direction === "outbound" ? "border-primary/25 bg-primary/[.03]" : ""}>

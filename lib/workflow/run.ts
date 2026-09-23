@@ -1,14 +1,16 @@
 import { Command } from "@langchain/langgraph";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { azureChatClient } from "@/lib/ai/chat";
 import { db } from "@/lib/db/client";
-import { ticketApprovals, ticketSendAttempts } from "@/lib/db/schema";
+import { ticketApprovals, ticketMessages, ticketSendAttempts } from "@/lib/db/schema";
 import { getMailTransport } from "@/lib/mail/transports";
 import { compileWorkflowGraph } from "./graph";
 import { getWorkflowSettings } from "./settings";
 
-function threadIdFor(ticketId: string): string {
-  return `ticket:${ticketId}`;
+function threadIdFor(ticketId: string, inboundMessageId: string | undefined): string {
+  return inboundMessageId
+    ? `ticket:${ticketId}:inbound:${inboundMessageId}`
+    : `ticket:${ticketId}`;
 }
 
 async function graph() {
@@ -25,7 +27,26 @@ export async function startWorkflowRun(ticketId: string): Promise<void> {
     return;
   }
 
-  const thread = threadIdFor(ticketId);
+  const [latestInbound] = await db
+    .select({ id: ticketMessages.id })
+    .from(ticketMessages)
+    .where(and(eq(ticketMessages.ticketId, ticketId), eq(ticketMessages.direction, "inbound")))
+    .orderBy(desc(ticketMessages.sentAt), desc(ticketMessages.id))
+    .limit(1);
+  const thread = threadIdFor(ticketId, latestInbound?.id);
+  // pg-boss delivers at least once, and duplicate queued runs must not create
+  // multiple approvals for the same inbound email. A new inbound message gets
+  // a different checkpoint and can still start a fresh workflow.
+  const [existingApproval] = await db
+    .select({ id: ticketApprovals.id })
+    .from(ticketApprovals)
+    .where(eq(ticketApprovals.graphThreadId, thread))
+    .limit(1);
+  if (existingApproval) {
+    console.log(`Workflow already started for ${thread}; skipping duplicate delivery.`);
+    return;
+  }
+
   const compiled = await graph();
   await compiled.invoke(
     { ticketId, graphThreadId: thread },

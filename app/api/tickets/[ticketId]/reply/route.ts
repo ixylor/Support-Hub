@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db/client";
 import { mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
 import { getMailTransport } from "@/lib/mail/transports";
+import { normalizeEmailBody } from "@/lib/mail/format";
 import { runAgent } from "@/lib/workflow/run-agent";
 import { azureChatClient } from "@/lib/ai/chat";
 import { getTicketWithMessages, type TicketViewer } from "@/lib/tickets/queries";
@@ -58,7 +59,7 @@ export async function POST(
         "Conversation:",
         messages,
         "",
-        "Write a short, professional support reply. Be clear and warm. Use only the information in the conversation. Do not add a subject, greeting placeholder, signature placeholder, or commentary about drafting.",
+        "Write a short, professional support reply. Be clear and warm. Use only the information in the conversation. Do not add a subject, greeting placeholder, signature placeholder, or commentary about drafting. Use complete sentences, avoid hard line breaks inside sentences, and leave one blank line between paragraphs.",
         "Return exactly one JSON object matching the response schema: {\"body\":\"the complete email reply\"}. Put the entire reply in body; do not return a bare string or any fields besides body.",
       ].join("\n"),
       schemaName: "manual_reply_draft",
@@ -74,7 +75,7 @@ export async function POST(
         { status: 502 }
       );
     }
-    return NextResponse.json({ body });
+    return NextResponse.json({ body: normalizeEmailBody(body) });
   }
 
   const body = input?.body?.trim();
@@ -85,6 +86,7 @@ export async function POST(
     .select({
       subject: tickets.subject,
       requesterEmail: tickets.requesterEmail,
+      providerThreadId: tickets.providerThreadId,
       mailboxAddress: mailboxConnections.mailboxAddress,
     })
     .from(tickets)
@@ -113,6 +115,7 @@ export async function POST(
     to: row.requesterEmail,
     subject: replySubject(row.subject),
     bodyText: body,
+    threadId: row.providerThreadId,
     inReplyTo,
     references,
   });

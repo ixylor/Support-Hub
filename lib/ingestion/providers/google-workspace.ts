@@ -3,7 +3,7 @@ import type { AttachmentRef, MailProvider, OAuthTokens, ProviderMessage } from "
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
 
 function getAuthorizationUrl(clientId: string, redirectUri: string, state: string): string {
   const params = new URLSearchParams({
@@ -149,6 +149,7 @@ async function fetchFullMessage(accessToken: string, id: string): Promise<Provid
     attachments: collectAttachments(parts),
     messageIdHeader: headerValue(data.payload.headers, "Message-ID") || null,
     inReplyToHeader: headerValue(data.payload.headers, "In-Reply-To") || null,
+    referencesHeader: headerValue(data.payload.headers, "References") || null,
   };
 }
 

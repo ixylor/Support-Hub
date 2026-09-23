@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
 import { Logo } from "@/components/branding/logo";
 import { Nav } from "@/components/dashboard/nav";
-import { SignOutButton } from "@/components/dashboard/sign-out-button";
+import { AccountDropdown } from "@/components/dashboard/account-dropdown";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { isThemeValue, THEME_COOKIE_NAME } from "@/lib/theme";
 import {
@@ -25,6 +25,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const role = (session.user as { role: "agent" | "admin" }).role;
+  const userName = session.user.name?.trim() || "User";
+  const userEmail = session.user.email;
+  const avatarInitials = userName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
 
   // The vendored SidebarProvider persists open/collapsed state in this cookie
   // on toggle; reading it here lets the server render the correct state on
@@ -40,7 +48,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <SidebarProvider defaultOpen={defaultOpen} className="h-svh overflow-hidden">
       <Sidebar collapsible="icon">
-        <SidebarHeader className="overflow-hidden border-b px-3 py-4">
+        <SidebarHeader className="overflow-hidden border-b px-3 py-4 group-data-[collapsible=icon]:px-1">
           {/* Swap to the mark-only logo at rail width so the wordmark never clips. */}
           <div className="flex items-center truncate group-data-[collapsible=icon]:justify-center">
             <Logo className="group-data-[collapsible=icon]:hidden" />
@@ -50,15 +58,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <SidebarContent>
           <Nav role={role} />
         </SidebarContent>
-        <SidebarFooter className="border-t">
-          {/* Hidden in icon mode: at 3rem wide there's no room for the email
-              or the full-width sign-out button without causing overflow. */}
-          <div className="group-data-[collapsible=icon]:hidden">
-            <p className="truncate px-2 text-xs text-muted-foreground" title={session.user.email}>
-              {session.user.email}
-            </p>
-            <SignOutButton />
-          </div>
+        <SidebarFooter className="border-t p-2 group-data-[collapsible=icon]:px-0">
+          <AccountDropdown name={userName} email={userEmail} initials={avatarInitials} />
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>

@@ -2,7 +2,7 @@ import { rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { attachments, ticketMessages, tickets } from "@/lib/db/schema";
+import { attachments, deletedGoogleThreads, mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
 import { attachmentsDir } from "@/lib/ingestion/attachment-storage";
 
 export const DELETABLE_TICKET_STATUSES = ["resolved", "triaged_out"] as const;
@@ -38,6 +38,10 @@ async function removeCheckpoints(tx: Parameters<Parameters<typeof db.transaction
     await tx.execute(sql`DELETE FROM "checkpoint_blobs" WHERE "thread_id" = ${threadId}`);
     await tx.execute(sql`DELETE FROM "checkpoints" WHERE "thread_id" = ${threadId}`);
   }
+  const inboundThreadPrefix = `ticket:${ticketId}:inbound:%`;
+  await tx.execute(sql`DELETE FROM "checkpoint_writes" WHERE "thread_id" LIKE ${inboundThreadPrefix}`);
+  await tx.execute(sql`DELETE FROM "checkpoint_blobs" WHERE "thread_id" LIKE ${inboundThreadPrefix}`);
+  await tx.execute(sql`DELETE FROM "checkpoints" WHERE "thread_id" LIKE ${inboundThreadPrefix}`);
 }
 
 /**
@@ -51,14 +55,36 @@ async function removeCheckpoints(tx: Parameters<Parameters<typeof db.transaction
 export async function deleteTicket(ticketId: string): Promise<DeleteTicketResult> {
   const result = await db.transaction(async (tx) => {
     const [ticket] = await tx
-      .select({ id: tickets.id, status: tickets.status })
+      .select({
+        id: tickets.id,
+        status: tickets.status,
+        providerThreadId: tickets.providerThreadId,
+        provider: mailboxConnections.provider,
+        mailboxAddress: mailboxConnections.mailboxAddress,
+      })
       .from(tickets)
+      .innerJoin(mailboxConnections, eq(tickets.mailboxConnectionId, mailboxConnections.id))
       .where(eq(tickets.id, ticketId))
       .limit(1);
 
     if (!ticket) return { ok: false as const, reason: "not_found" as const };
     if (!isDeletableStatus(ticket.status)) {
       return { ok: false as const, reason: "not_deletable" as const };
+    }
+
+    if (ticket.provider === "google") {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${ticket.mailboxAddress.trim().toLowerCase()}), hashtext(${ticket.providerThreadId}))`
+      );
+      await tx
+        .insert(deletedGoogleThreads)
+        .values({
+          mailboxAddress: ticket.mailboxAddress.trim().toLowerCase(),
+          providerThreadId: ticket.providerThreadId,
+        })
+        .onConflictDoNothing({
+          target: [deletedGoogleThreads.mailboxAddress, deletedGoogleThreads.providerThreadId],
+        });
     }
 
     const attachmentRows = await tx

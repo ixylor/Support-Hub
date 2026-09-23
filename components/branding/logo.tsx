@@ -32,6 +32,20 @@ function LogoMark({ className }: { className?: string }) {
   );
 }
 
+function BetaBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      title="Beta"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-sm border border-primary/25 bg-primary/10 font-semibold leading-none text-primary",
+        compact ? "px-1 py-0.5 text-[8px]" : "px-1.5 py-0.5 text-[9px] tracking-wider uppercase"
+      )}
+    >
+      {compact ? "β" : "Beta"}
+    </span>
+  );
+}
+
 export function Logo({
   size = "md",
   variant = "full",
@@ -44,8 +58,9 @@ export function Logo({
 }) {
   if (variant === "mark") {
     return (
-      <span role="img" aria-label="Support Hub" className={cn("inline-flex", className)}>
+      <span role="img" aria-label="Support Hub" className={cn("inline-flex items-center gap-1", className)}>
         <LogoMark className={markSizeClasses[size]} />
+        <BetaBadge compact />
       </span>
     );
   }
@@ -60,6 +75,7 @@ export function Logo({
     >
       <LogoMark className={cn(markSizeClasses[size], "shrink-0")} />
       Support Hub
+      <BetaBadge />
     </span>
   );
 }
