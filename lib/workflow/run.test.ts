@@ -2,7 +2,7 @@ import { Command } from "@langchain/langgraph";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { ticketApprovals, tickets, workflowSettings } from "@/lib/db/schema";
+import { ticketApprovals, ticketSendAttempts, tickets, workflowSettings } from "@/lib/db/schema";
 import { createTestTicket } from "@/lib/test-helpers/tickets";
 import { resumeWorkflowRun, startWorkflowRun } from "./run";
 
@@ -22,6 +22,7 @@ describe("workflow run", () => {
   });
 
   afterEach(async () => {
+    await db.delete(ticketSendAttempts).where(eq(ticketSendAttempts.ticketId, ticketId));
     await db.delete(ticketApprovals).where(eq(ticketApprovals.ticketId, ticketId));
     await db.delete(tickets).where(eq(tickets.id, ticketId));
   });
@@ -103,5 +104,56 @@ describe("workflow run", () => {
     await resumeWorkflowRun(crypto.randomUUID());
 
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("serializes duplicate resume jobs for one approval", async () => {
+    const [approval] = await db
+      .insert(ticketApprovals)
+      .values({
+        ticketId,
+        graphThreadId: `ticket:${ticketId}`,
+        kind: "send_email",
+        proposal: { body: "Draft" },
+        confidence: "0.9",
+        status: "decided",
+        decision: "approve",
+        decidedAt: new Date(),
+      })
+      .returning({ id: ticketApprovals.id });
+    invoke.mockImplementation(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+
+    await Promise.all([resumeWorkflowRun(approval.id), resumeWorkflowRun(approval.id)]);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replay an approval that already has a send claim", async () => {
+    const [approval] = await db
+      .insert(ticketApprovals)
+      .values({
+        ticketId,
+        graphThreadId: `ticket:${ticketId}`,
+        kind: "send_email",
+        proposal: { body: "Draft" },
+        confidence: "0.9",
+        status: "decided",
+        decision: "approve",
+        decidedAt: new Date(),
+      })
+      .returning({ id: ticketApprovals.id });
+    await db.insert(ticketSendAttempts).values({
+      ticketId,
+      approvalId: approval.id,
+      status: "sent",
+    });
+
+    await resumeWorkflowRun(approval.id);
+
+    expect(invoke).not.toHaveBeenCalled();
+    const [consumed] = await db
+      .select({ status: ticketApprovals.status })
+      .from(ticketApprovals)
+      .where(eq(ticketApprovals.id, approval.id));
+    expect(consumed.status).toBe("superseded");
   });
 });

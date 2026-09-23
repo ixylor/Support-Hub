@@ -6,7 +6,7 @@ import { Logo } from "@/components/branding/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { signIn } from "@/lib/auth/client";
 
 export default function LoginPage() {
@@ -29,12 +29,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="flex justify-center pb-2">
-          <Logo size="lg" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/30 p-4 sm:p-6">
+      <div className="pointer-events-none absolute -left-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 -bottom-24 size-72 rounded-full bg-primary/10 blur-3xl" />
+      <Card className="relative w-full max-w-md shadow-lg shadow-primary/5">
+        <CardHeader className="gap-4 border-b pb-6 text-center">
+          <Logo size="lg" className="justify-center text-primary" />
+          <div>
+            <CardTitle className="text-xl normal-case tracking-tight">Welcome back</CardTitle>
+            <CardDescription className="mt-1">Sign in to your support workspace.</CardDescription>
+          </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent className="flex flex-col gap-4 pt-6">
           <form className="flex flex-col gap-4" onSubmit={handleEmailSignIn}>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>

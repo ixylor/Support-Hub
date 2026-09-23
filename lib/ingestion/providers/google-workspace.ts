@@ -147,6 +147,8 @@ async function fetchFullMessage(accessToken: string, id: string): Promise<Provid
     bodyText,
     sentAt: new Date(Number(data.internalDate)),
     attachments: collectAttachments(parts),
+    messageIdHeader: headerValue(data.payload.headers, "Message-ID") || null,
+    inReplyToHeader: headerValue(data.payload.headers, "In-Reply-To") || null,
   };
 }
 

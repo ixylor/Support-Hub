@@ -78,7 +78,7 @@ export default async function TicketsPage({
   }
 
   const filterBar = isAdmin ? (
-    <div className="flex flex-wrap items-center justify-end gap-1">
+    <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:justify-end">
       {FILTERS.map(({ value, label }) => (
         // Styled as a button but genuinely a link: it navigates, and
         // wrapping it in <Button> would strip that from assistive tech.
@@ -108,12 +108,16 @@ export default async function TicketsPage({
 
   if (ticketRows.length === 0) {
     return (
-      <div>
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h1 className="text-lg font-semibold">Tickets</h1>
+      <div className="mx-auto w-full max-w-[1600px]">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">Inbox</p>
+            <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight">Tickets</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Track, assign, and resolve customer conversations.</p>
+          </div>
           {filterBar}
         </div>
-        <Empty>
+        <Empty className="min-h-72 rounded-xl border bg-card shadow-sm">
           <EmptyHeader>
             <EmptyTitle>{filter === "all" ? "No tickets yet" : "Nothing here"}</EmptyTitle>
             <EmptyDescription>
@@ -140,12 +144,20 @@ export default async function TicketsPage({
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <h1 className="text-lg font-semibold">Tickets</h1>
+    <div className="mx-auto w-full max-w-[1600px]">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">Inbox</p>
+          <div className="mt-1 flex items-baseline gap-3">
+            <h1 className="font-heading text-2xl font-semibold tracking-tight">Tickets</h1>
+            <span className="text-sm text-muted-foreground">{ticketRows.length} total</span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Track, assign, and resolve customer conversations.</p>
+        </div>
         {filterBar}
       </div>
-      <Table>
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
             <TableHead>Subject</TableHead>
@@ -203,6 +215,7 @@ export default async function TicketsPage({
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

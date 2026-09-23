@@ -12,7 +12,7 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 export interface JobPayloads {
   "kb.process": { entryId: string };
   "mailbox.poll": Record<string, never>;
-  "workflow.run": { ticketId: string; trigger: "new_ticket" | "customer_reply" };
+  "workflow.run": { ticketId: string; trigger: "new_ticket" | "customer_reply" | "manual" };
   "workflow.resume": { approvalId: string };
 }
 

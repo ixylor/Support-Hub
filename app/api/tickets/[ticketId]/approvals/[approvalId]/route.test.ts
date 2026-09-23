@@ -106,15 +106,21 @@ describe("POST /api/tickets/[ticketId]/approvals/[approvalId]", () => {
     expect(mocks.enqueue).toHaveBeenCalledWith("workflow.resume", { approvalId: "a1" });
   });
 
-  it("returns 409 when another reviewer already decided it", async () => {
+  it("returns 409 without replaying when another reviewer already decided it", async () => {
     const { ApprovalAlreadyDecidedError } = await import("@/lib/workflow/approvals");
     mocks.decideApproval.mockRejectedValue(new ApprovalAlreadyDecidedError());
 
-    expect((await POST(post({ decision: "approve" }), context)).status).toBe(409);
-    expect(mocks.enqueue).toHaveBeenCalledWith("workflow.resume", { approvalId: "a1" });
+    const response = await POST(post({ decision: "approve" }), context);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This approval has already been decided.",
+      code: "approval_not_pending",
+    });
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
-  it("requeues an already-recorded matching verdict", async () => {
+  it("does not requeue an already-recorded matching verdict", async () => {
     mocks.getApprovalForTicket.mockResolvedValue({
       id: "a1",
       status: "decided",
@@ -129,8 +135,26 @@ describe("POST /api/tickets/[ticketId]/approvals/[approvalId]", () => {
       context
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
     expect(mocks.decideApproval).not.toHaveBeenCalled();
-    expect(mocks.enqueue).toHaveBeenCalledWith("workflow.resume", { approvalId: "a1" });
+    await expect(response.json()).resolves.toMatchObject({ code: "approval_not_pending" });
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("does not enqueue a superseded approval", async () => {
+    mocks.getApprovalForTicket.mockResolvedValue({
+      id: "a1",
+      status: "superseded",
+      decision: null,
+      editedBody: null,
+      feedback: null,
+      overrideAction: null,
+    });
+
+    const response = await POST(post({ decision: "approve" }), context);
+
+    expect(response.status).toBe(409);
+    expect(mocks.decideApproval).not.toHaveBeenCalled();
+    expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 });

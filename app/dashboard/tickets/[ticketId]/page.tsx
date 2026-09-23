@@ -15,6 +15,7 @@ import {
 } from "@/lib/tickets/labels";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getPendingApproval } from "@/lib/workflow/approvals";
 import { getApprovalCitations, getRunTimeline } from "@/lib/workflow/timeline";
 import { ApprovalPanel, type ApprovalProposal } from "./approval-panel";
@@ -22,6 +23,8 @@ import { MessageList } from "./message-list";
 import { AssignDialog } from "./assign-dialog";
 import { RunTimeline } from "./run-timeline";
 import { RunWorkflowButton } from "./run-workflow-button";
+import { ManualReply } from "./manual-reply";
+import { DeleteTicket } from "./delete-ticket";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -83,7 +86,7 @@ export default async function TicketThreadPage({
     : [];
 
   return (
-    <div className="max-w-3xl">
+    <div className="min-w-0 max-w-[1600px]">
       <Link href="/dashboard/tickets" className="text-sm text-muted-foreground hover:underline">
         &larr; Back to tickets
       </Link>
@@ -96,6 +99,9 @@ export default async function TicketThreadPage({
         <div className="flex flex-wrap items-center justify-end gap-3">
           {isAdmin ? <RunWorkflowButton ticketId={ticket.id} /> : null}
           <Badge variant={STATUS_VARIANTS[ticket.status]}>{STATUS_LABELS[ticket.status]}</Badge>
+          {isAdmin && (ticket.status === "resolved" || ticket.status === "triaged_out") ? (
+            <DeleteTicket ticketId={ticket.id} />
+          ) : null}
         </div>
       </div>
 
@@ -110,48 +116,55 @@ export default async function TicketThreadPage({
         />
       ) : null}
 
-      <Card className="mb-6">
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <CardTitle className="text-sm font-medium">Assignment</CardTitle>
-          {isAdmin ? (
-            <AssignDialog
-              ticketId={ticket.id}
-              currentAssignee={ticket.assignee}
-              currentPriority={ticket.priority}
-              currentUserId={viewer.id}
-            />
-          ) : null}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+      <div className="grid items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
+      <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b bg-muted/30 px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <span className="text-muted-foreground">Assigned to </span>
-              {ticket.assignee ? (
-                <span className="font-medium">{ticket.assignee.name}</span>
-              ) : (
-                <span className="text-muted-foreground">nobody yet</span>
-              )}
+              <p className="text-[10px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">Ticket details</p>
+              <CardTitle className="mt-1 text-base">Ownership</CardTitle>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Priority</span>
-              {ticket.priority ? (
-                <Badge variant={PRIORITY_VARIANTS[ticket.priority]}>
-                  {PRIORITY_LABELS[ticket.priority]}
-                </Badge>
-              ) : (
-                <span className="text-muted-foreground">none set</span>
-              )}
+            {isAdmin ? (
+              <AssignDialog
+                ticketId={ticket.id}
+                currentAssignee={ticket.assignee}
+                currentPriority={ticket.priority}
+                currentUserId={viewer.id}
+              />
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4 px-4 py-4">
+          <div className="rounded-md border bg-background p-3">
+            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Assigned agent</p>
+            <p className="mt-1 text-sm font-medium">{ticket.assignee?.name ?? "Unassigned"}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{ticket.assignee ? "Responsible for the next action" : "Assign an owner to make this ticket visible to an agent"}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Priority</p>
+              <div className="mt-2">{ticket.priority ? <Badge variant={PRIORITY_VARIANTS[ticket.priority]}>{PRIORITY_LABELS[ticket.priority]}</Badge> : <span className="text-xs text-muted-foreground">Not set</span>}</div>
+            </div>
+            <div className="rounded-md border bg-background p-3">
+              <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Messages</p>
+              <p className="mt-2 text-sm font-medium">{ticket.messages.length}</p>
             </div>
           </div>
 
+          <div className="rounded-md border bg-background p-3">
+            <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Requester</p>
+            <p className="mt-1 break-all text-sm">{ticket.requesterEmail}</p>
+          </div>
+
           {history.length > 0 ? (
-            <div className="flex flex-col gap-3 border-t pt-4">
-              <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                History
-              </h2>
-              <ol className="flex flex-col gap-3">
-                {history.map((entry) => (
-                  <li key={entry.id} className="text-sm">
+            <Collapsible>
+              <CollapsibleTrigger className="flex w-full items-center justify-between border-t pt-4 text-left text-xs font-semibold tracking-wider text-muted-foreground uppercase hover:text-foreground">
+                Assignment history <span>({history.length})</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+              <ol className="mt-3 flex flex-col gap-3">
+                {history.map((entry) => (<li key={entry.id} className="border-l-2 border-muted pl-3 text-sm">
                     <p>
                       <span className="font-medium">{entry.assignedBy.name}</span>{" "}
                       {entry.assignee ? (
@@ -174,25 +187,40 @@ export default async function TicketThreadPage({
                     <p className="mt-1 text-xs text-muted-foreground">
                       {dateFormatter.format(entry.createdAt)}
                     </p>
-                  </li>
+                </li>
                 ))}
               </ol>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
           ) : null}
         </CardContent>
       </Card>
 
-      <RunTimeline entries={timeline} />
+      <Card className="border-dashed">
+        <CardHeader><CardTitle className="text-sm">Workflow control</CardTitle></CardHeader>
+        <CardContent className="text-xs text-muted-foreground">
+          <p>Run manually after a new customer email arrives. Repeated runs without a new email are blocked.</p>
+        </CardContent>
+      </Card>
+      </aside>
 
+      <main className="min-w-0">
       <MessageList
         messages={ticket.messages.map((message) => ({
           id: message.id,
+          direction: message.direction,
           senderEmail: message.senderEmail,
           body: message.body,
           sentAtLabel: dateFormatter.format(message.sentAt),
           attachments: message.attachments,
         }))}
       />
+      <ManualReply ticketId={ticket.id} />
+      </main>
+      <section className="min-w-0 rounded-lg border bg-card lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)]">
+        <RunTimeline entries={timeline} />
+      </section>
+      </div>
     </div>
   );
 }

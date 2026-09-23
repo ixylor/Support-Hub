@@ -85,6 +85,48 @@
       "when": 1790073030862,
       "tag": "0011_oval_puck",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790160000000,
+      "tag": "0012_manual_writer",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790160000001,
+      "tag": "0013_seed_manual_writer",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790160000002,
+      "tag": "0014_cascade_ticket_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790130212789,
+      "tag": "0015_amused_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790160000004,
+      "tag": "0016_structured_draft_prompts",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790160000005,
+      "tag": "0017_auth_admin_fields",
+      "breakpoints": true
     }
   ]
 }

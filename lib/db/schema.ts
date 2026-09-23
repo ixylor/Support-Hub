@@ -116,7 +116,7 @@ export const ticketAssignments = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     ticketId: uuid("ticket_id")
       .notNull()
-      .references(() => tickets.id),
+      .references(() => tickets.id, { onDelete: "cascade" }),
     // Null records an unassignment.
     assignedToUserId: text("assigned_to_user_id").references(() => user.id),
     assignedByUserId: text("assigned_by_user_id")
@@ -140,7 +140,7 @@ export const ticketMessages = pgTable("ticket_messages", {
   id: uuid("id").primaryKey().defaultRandom(),
   ticketId: uuid("ticket_id")
     .notNull()
-    .references(() => tickets.id),
+    .references(() => tickets.id, { onDelete: "cascade" }),
   direction: messageDirectionEnum("direction").notNull(),
   senderEmail: text("sender_email").notNull(),
   body: text("body").notNull(),
@@ -158,7 +158,7 @@ export const attachments = pgTable("attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
   ticketMessageId: uuid("ticket_message_id")
     .notNull()
-    .references(() => ticketMessages.id),
+    .references(() => ticketMessages.id, { onDelete: "cascade" }),
   filename: text("filename").notNull(),
   storagePath: text("storage_path").notNull(),
   contentType: text("content_type").notNull(),
@@ -247,6 +247,7 @@ export const agentKeyEnum = pgEnum("agent_key", [
   "info_requester",
   "router",
   "triage",
+  "manual_writer",
 ]);
 
 export const agents = pgTable("agents", {
@@ -294,7 +295,7 @@ export const agentPromptVersions = pgTable(
 
 export const llmLogs = pgTable("llm_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  ticketId: uuid("ticket_id").references(() => tickets.id),
+  ticketId: uuid("ticket_id").references(() => tickets.id, { onDelete: "cascade" }),
   prompt: text("prompt").notNull(),
   response: text("response").notNull(),
   model: text("model").notNull(),
@@ -412,7 +413,7 @@ export const ticketApprovals = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     ticketId: uuid("ticket_id")
       .notNull()
-      .references(() => tickets.id),
+      .references(() => tickets.id, { onDelete: "cascade" }),
     graphThreadId: text("graph_thread_id").notNull(),
     kind: approvalKindEnum("kind").notNull(),
     // Shaped per kind — see the spec's "What proposal holds, per kind".

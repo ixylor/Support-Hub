@@ -30,6 +30,7 @@ export type MessageListAttachment = {
 
 export type MessageListItem = {
   id: string;
+  direction: "inbound" | "outbound";
   senderEmail: string;
   body: string;
   sentAtLabel: string;
@@ -102,11 +103,20 @@ function MessageBody({ body }: { body: string }) {
 
 export function MessageList({ messages }: { messages: MessageListItem[] }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Email thread</h2>
+          <p className="text-xs text-muted-foreground">{messages.length} message{messages.length === 1 ? "" : "s"}</p>
+        </div>
+      </div>
       {messages.map((message) => (
-        <Card key={message.id}>
+        <Card key={message.id} className={message.direction === "outbound" ? "border-primary/25 bg-primary/[.03]" : ""}>
           <CardHeader className="grid-cols-[1fr_auto] items-baseline">
-            <span className="font-medium">{message.senderEmail}</span>
+            <div className="min-w-0">
+              <span className="font-medium">{message.direction === "outbound" ? "Support" : message.senderEmail}</span>
+              <span className="ml-2 text-xs text-muted-foreground">{message.direction === "outbound" ? "sent" : "received"}</span>
+            </div>
             <span className="text-xs text-muted-foreground">{message.sentAtLabel}</span>
           </CardHeader>
           <CardContent>

@@ -3,9 +3,11 @@ import { db } from "@/lib/db/client";
 import { agents, kbChunks, kbEntries, llmLogs, ticketApprovals } from "@/lib/db/schema";
 
 export interface TimelineEntry {
+  id: string;
   at: Date;
   kind: "agent" | "approval";
   label: string;
+  status: "completed" | "pending" | "approved" | "rejected" | "superseded" | "auto_approved";
   detail: string;
 }
 
@@ -49,6 +51,7 @@ export async function getRunTimeline(ticketId: string): Promise<TimelineEntry[]>
   const [calls, approvals] = await Promise.all([
     db
       .select({
+        id: llmLogs.id,
         at: llmLogs.createdAt,
         name: agents.name,
         response: llmLogs.response,
@@ -67,15 +70,28 @@ export async function getRunTimeline(ticketId: string): Promise<TimelineEntry[]>
 
   const entries: TimelineEntry[] = [
     ...calls.map((call) => ({
+      id: call.id,
       at: call.at,
       kind: "agent" as const,
       label: call.name ?? "Agent",
+      status: "completed" as const,
       detail: `${call.model}: ${call.response}`,
     })),
     ...approvals.map((approval) => ({
+      id: approval.id,
       at: approval.decidedAt ?? approval.createdAt,
       kind: "approval" as const,
       label: approval.kind,
+      status:
+        approval.status === "pending"
+          ? ("pending" as const)
+          : approval.status === "superseded"
+            ? ("superseded" as const)
+            : approval.autoApprovedReason
+              ? ("auto_approved" as const)
+              : approval.decision === "reject_feedback"
+                ? ("rejected" as const)
+                : ("approved" as const),
       detail:
         approval.status === "pending"
           ? "Waiting for a reviewer"

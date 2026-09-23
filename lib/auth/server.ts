@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { admin } from "better-auth/plugins";
+import { defaultRoles } from "better-auth/plugins/admin/access";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
@@ -31,4 +33,14 @@ export const auth = betterAuth({
       },
     },
   },
+  plugins: [
+    admin({
+      defaultRole: "agent",
+      adminRoles: ["admin"],
+      roles: {
+        admin: defaultRoles.admin,
+        agent: defaultRoles.user,
+      },
+    }),
+  ],
 });

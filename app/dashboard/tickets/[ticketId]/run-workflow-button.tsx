@@ -14,12 +14,12 @@ export function RunWorkflowButton({ ticketId }: { ticketId: string }) {
     setStatus(null);
     try {
       const response = await fetch(`/api/tickets/${ticketId}/run`, { method: "POST" });
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
       if (!response.ok) {
         setStatus(payload?.error ?? "Failed to queue the workflow.");
         return;
       }
-      setStatus("Queued");
+      setStatus("Queued — logs will update when the worker finishes.");
       router.refresh();
     } catch {
       setStatus("Failed to queue the workflow.");
@@ -33,7 +33,11 @@ export function RunWorkflowButton({ ticketId }: { ticketId: string }) {
       <Button size="sm" variant="outline" disabled={busy} onClick={run}>
         {busy ? "Queueing..." : "Run workflow"}
       </Button>
-      {status ? <span className="text-xs text-muted-foreground">{status}</span> : null}
+      {status ? (
+        <span className={`max-w-72 text-xs ${status.startsWith("There is") || status.startsWith("This workflow") ? "text-amber-700" : "text-muted-foreground"}`}>
+          {status}
+        </span>
+      ) : null}
     </div>
   );
 }

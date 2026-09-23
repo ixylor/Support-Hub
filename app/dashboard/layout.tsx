@@ -33,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <SidebarProvider defaultOpen={defaultOpen} className="h-svh overflow-hidden">
       <Sidebar collapsible="icon">
-        <SidebarHeader className="overflow-hidden">
+        <SidebarHeader className="overflow-hidden border-b px-3 py-4">
           {/* Swap to the mark-only logo at rail width so the wordmark never clips. */}
           <div className="flex items-center truncate group-data-[collapsible=icon]:justify-center">
             <Logo className="group-data-[collapsible=icon]:hidden" />
@@ -57,10 +57,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </Sidebar>
       <SidebarInset className="h-svh overflow-hidden">
         <div className="flex h-full min-h-0 flex-col">
-          <header className="flex shrink-0 items-center gap-2 border-b p-2">
+          <header className="flex shrink-0 items-center gap-3 border-b bg-background/95 px-3 py-2.5 backdrop-blur sm:px-5">
             <SidebarTrigger />
+            <div className="flex min-w-0 items-center gap-2 md:hidden">
+              <Logo size="sm" />
+            </div>
+            <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">
+              Press <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">⌘ B</kbd> to toggle sidebar
+            </span>
           </header>
-          <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
+          <main className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6 sm:py-7 lg:px-8">{children}</main>
         </div>
       </SidebarInset>
     </SidebarProvider>

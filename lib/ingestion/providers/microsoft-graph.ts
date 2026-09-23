@@ -96,7 +96,7 @@ async function listAttachments(accessToken: string, messageId: string): Promise<
 async function getNewMessages(accessToken: string, cursor: string | null) {
   const since = cursor ?? new Date(0).toISOString();
   const filter = encodeURIComponent(`receivedDateTime gt ${since}`);
-  const url = `${GRAPH_BASE}/me/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,conversationId,from,subject,body,receivedDateTime`;
+  const url = `${GRAPH_BASE}/me/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime asc&$top=50&$select=id,conversationId,from,subject,body,receivedDateTime,internetMessageHeaders`;
 
   const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!response.ok) {
@@ -110,11 +110,14 @@ async function getNewMessages(accessToken: string, cursor: string | null) {
       subject: string;
       body: { content: string };
       receivedDateTime: string;
+      internetMessageHeaders?: Array<{ name: string; value: string }>;
     }>;
   };
 
   const messages: ProviderMessage[] = [];
   for (const item of data.value) {
+    const header = (name: string) =>
+      item.internetMessageHeaders?.find((entry) => entry.name.toLowerCase() === name.toLowerCase())?.value ?? null;
     messages.push({
       providerMessageId: item.id,
       providerThreadId: item.conversationId,
@@ -123,6 +126,8 @@ async function getNewMessages(accessToken: string, cursor: string | null) {
       bodyText: stripHtml(item.body.content),
       sentAt: new Date(item.receivedDateTime),
       attachments: await listAttachments(accessToken, item.id),
+      messageIdHeader: header("Message-ID"),
+      inReplyToHeader: header("In-Reply-To"),
     });
   }
 

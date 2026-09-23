@@ -49,12 +49,36 @@ describe("workflow timeline", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({
       kind: "agent",
+      status: "completed",
       detail: 'gpt-test: {"body":"Draft"}',
     });
     expect(entries[1]).toMatchObject({
       kind: "approval",
       label: "send_email",
+      status: "pending",
       detail: "Waiting for a reviewer",
+    });
+  });
+
+  it("exposes a stable status for completed review events", async () => {
+    await db.insert(ticketApprovals).values({
+      ticketId,
+      graphThreadId: `timeline:${ticketId}:decided`,
+      kind: "send_email",
+      proposal: { body: "Draft" },
+      confidence: "0.8",
+      status: "decided",
+      decision: "approve",
+      decidedAt: new Date("2026-09-21T10:05:00Z"),
+    });
+
+    const [entry] = await getRunTimeline(ticketId);
+
+    expect(entry).toMatchObject({
+      kind: "approval",
+      id: expect.any(String),
+      status: "approved",
+      detail: "approve by a reviewer",
     });
   });
 

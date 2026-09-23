@@ -98,7 +98,16 @@ export async function sendNode(
   const references = state.thread
     .map((message) => message.messageIdHeader)
     .filter((header): header is string => header !== null);
-  const inReplyTo = references.length ? references[references.length - 1] : null;
+  // Reply to the newest customer message, not merely the newest row. This
+  // keeps the outbound message attached to the customer's email even when a
+  // ticket contains an older support reply or is replayed after a retry.
+  let inReplyTo: string | null = null;
+  for (let index = state.thread.length - 1; index >= 0; index--) {
+    if (state.thread[index].direction === "inbound" && state.thread[index].messageIdHeader) {
+      inReplyTo = state.thread[index].messageIdHeader;
+      break;
+    }
+  }
 
   let sent: { providerMessageId: string; messageIdHeader: string };
   try {

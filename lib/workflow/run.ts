@@ -1,8 +1,8 @@
 import { Command } from "@langchain/langgraph";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { azureChatClient } from "@/lib/ai/chat";
 import { db } from "@/lib/db/client";
-import { ticketApprovals } from "@/lib/db/schema";
+import { ticketApprovals, ticketSendAttempts } from "@/lib/db/schema";
 import { getMailTransport } from "@/lib/mail/transports";
 import { compileWorkflowGraph } from "./graph";
 import { getWorkflowSettings } from "./settings";
@@ -34,34 +34,60 @@ export async function startWorkflowRun(ticketId: string): Promise<void> {
 }
 
 export async function resumeWorkflowRun(approvalId: string): Promise<void> {
-  const [approval] = await db
-    .select()
-    .from(ticketApprovals)
-    .where(eq(ticketApprovals.id, approvalId))
-    .limit(1);
+  await db.transaction(async (tx) => {
+    // pg-boss is at-least-once. Holding the row lock across the graph resume
+    // means two deliveries of the same approval cannot invoke the graph
+    // concurrently; the second delivery sees the consumed status after the
+    // first transaction commits.
+    const [approval] = await tx
+      .select()
+      .from(ticketApprovals)
+      .where(eq(ticketApprovals.id, approvalId))
+      .for("update")
+      .limit(1);
 
-  if (!approval || approval.status !== "decided" || !approval.decision) {
-    return;
-  }
+    if (!approval || approval.status !== "decided" || !approval.decision) {
+      return;
+    }
 
-  const compiled = await graph();
-  await compiled.invoke(
-    new Command({
-      resume: {
-        decision: approval.decision,
-        editedBody: approval.editedBody,
-        feedback: approval.feedback,
-        overrideAction: approval.overrideAction,
-      },
-    }),
-    { configurable: { thread_id: approval.graphThreadId } }
-  );
+    // A send claim is written before the transport is called. If a worker
+    // died after that point, invoking the graph again would replay the same
+    // approval even though the transport may already have accepted the mail.
+    // Consume the approval instead; a fresh approval is required for any
+    // deliberate retry.
+    const [sendAttempt] = await tx
+      .select({ id: ticketSendAttempts.id })
+      .from(ticketSendAttempts)
+      .where(eq(ticketSendAttempts.approvalId, approval.id))
+      .limit(1);
+    if (sendAttempt) {
+      await tx
+        .update(ticketApprovals)
+        .set({ status: "superseded" })
+        .where(
+          and(eq(ticketApprovals.id, approval.id), eq(ticketApprovals.status, "decided"))
+        );
+      return;
+    }
 
-  // pg-boss is at-least-once. Mark this verdict consumed only after invoke
-  // returns so a retry after success cannot apply it to the next interrupt;
-  // a thrown invoke remains decided and can be retried safely.
-  await db
-    .update(ticketApprovals)
-    .set({ status: "superseded" })
-    .where(eq(ticketApprovals.id, approval.id));
+    const compiled = await graph();
+    await compiled.invoke(
+      new Command({
+        resume: {
+          decision: approval.decision,
+          editedBody: approval.editedBody,
+          feedback: approval.feedback,
+          overrideAction: approval.overrideAction,
+        },
+      }),
+      { configurable: { thread_id: approval.graphThreadId } }
+    );
+
+    await tx
+      .update(ticketApprovals)
+      .set({ status: "superseded" })
+      .where(
+        and(eq(ticketApprovals.id, approval.id), eq(ticketApprovals.status, "decided"))
+      );
+  });
 }

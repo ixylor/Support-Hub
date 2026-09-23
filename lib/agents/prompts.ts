@@ -7,7 +7,7 @@ export type AgentKey = (typeof agents.key.enumValues)[number];
 async function getAgentId(key: AgentKey): Promise<string> {
   const [row] = await db.select({ id: agents.id }).from(agents).where(eq(agents.key, key)).limit(1);
   if (!row) {
-    // The four rows are seeded by migration, so a miss means the database is
+    // The seeded rows are created by migration, so a miss means the database is
     // behind the code rather than that the caller passed something invalid.
     throw new Error(`Agent "${key}" is missing — has the latest migration run?`);
   }

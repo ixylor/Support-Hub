@@ -45,8 +45,17 @@ export async function POST(
   if (!approval) {
     return NextResponse.json({ error: "Approval not found." }, { status: 404 });
   }
-  if (approval.status === "superseded") {
-    return NextResponse.json({ error: "This approval is no longer pending." }, { status: 409 });
+  if (approval.status !== "pending") {
+    return NextResponse.json(
+      {
+        error:
+          approval.status === "decided"
+            ? "This approval has already been decided."
+            : "This approval is no longer pending.",
+        code: "approval_not_pending",
+      },
+      { status: 409 }
+    );
   }
 
   let body: unknown;
@@ -90,31 +99,17 @@ export async function POST(
         : null,
   };
 
-  if (approval.status === "decided") {
-    const isSameVerdict =
-      approval.decision === verdict.decision &&
-      approval.editedBody === verdict.editedBody &&
-      approval.feedback === verdict.feedback &&
-      approval.overrideAction === verdict.overrideAction;
-    if (!isSameVerdict) {
-      return NextResponse.json(
-        { error: "This approval has already been decided." },
-        { status: 409 }
-      );
-    }
-
-    await enqueue(QUEUES.workflowResume, { approvalId });
-    return NextResponse.json({ ok: true });
-  }
-
   try {
     await decideApproval(approvalId, verdict, viewer.id);
   } catch (error) {
     if (error instanceof ApprovalAlreadyDecidedError) {
-      // Another request won after our read. Re-enqueueing is safe and also
-      // repairs the case where its queue write failed after committing.
-      await enqueue(QUEUES.workflowResume, { approvalId });
-      return NextResponse.json({ error: error.message }, { status: 409 });
+      // Another request won after our read. Do not enqueue here: this request
+      // did not create a new decision, and replaying the same approval can
+      // re-run downstream workflow work after an email has already been sent.
+      return NextResponse.json(
+        { error: error.message, code: "approval_not_pending" },
+        { status: 409 }
+      );
     }
     throw error;
   }

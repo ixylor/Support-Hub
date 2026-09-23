@@ -107,6 +107,8 @@ export async function ingestMessage(
         senderEmail: message.senderEmail,
         body: message.bodyText,
         providerMessageId: message.providerMessageId,
+        messageIdHeader: message.messageIdHeader ?? null,
+        inReplyToHeader: message.inReplyToHeader ?? null,
         sentAt: message.sentAt,
       })
       .onConflictDoNothing({ target: ticketMessages.providerMessageId })

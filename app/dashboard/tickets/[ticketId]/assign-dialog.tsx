@@ -2,10 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiArrowDownSLine } from "@remixicon/react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -98,7 +104,7 @@ export function AssignDialog({
                   <span className={assignee ? undefined : "text-muted-foreground"}>
                     {assignee ? assignee.name : "Unassigned"}
                   </span>
-                  <RiArrowDownSLine className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span className="text-xs text-muted-foreground">Choose</span>
                 </button>
               }
             />
@@ -106,19 +112,23 @@ export function AssignDialog({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="priority">Priority</Label>
-            <NativeSelect
-              id="priority"
-              className="w-full"
-              value={priority}
-              onChange={(event) => setPriority(event.target.value)}
+            <Select value={priority}
+              onValueChange={(value) => {
+                if (value) setPriority(value);
+              }}
             >
-              <NativeSelectOption value={NO_PRIORITY}>No priority</NativeSelectOption>
-              {PRIORITIES.map((value) => (
-                <NativeSelectOption key={value} value={value}>
+              <SelectTrigger id="priority" aria-label="Priority" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PRIORITY}>No priority</SelectItem>
+                {PRIORITIES.map((value) => (
+                  <SelectItem key={value} value={value}>
                   {PRIORITY_LABELS[value]}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -140,7 +150,8 @@ export function AssignDialog({
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleAssign} disabled={saving}>
+          <Button onClick={handleAssign} disabled={saving} aria-busy={saving}>
+            {saving ? <Spinner /> : null}
             {saving ? "Saving..." : "Save assignment"}
           </Button>
         </DialogFooter>

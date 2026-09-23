@@ -12,6 +12,10 @@ export interface ProviderMessage {
   bodyText: string;
   sentAt: Date;
   attachments: AttachmentRef[];
+  // RFC headers are needed when support sends a reply. Provider ids identify
+  // the message to an API, but they do not create an email thread.
+  messageIdHeader?: string | null;
+  inReplyToHeader?: string | null;
 }
 
 export interface FetchMessagesResult {

@@ -94,7 +94,9 @@ describe("agent nodes", () => {
     );
 
     expect(runAgent.mock.calls[0][0].userPrompt).toContain("Too curt.");
+    expect(runAgent.mock.calls[0][0].userPrompt).toContain("complete customer email in body");
     expect(patch.outbound?.kind).toBe("answer");
+    expect(patch.outbound?.body).toBe("Reset your password from the sign-in page.");
     expect(patch.outbound?.citedChunkIds).toEqual(["c1"]);
     expect(patch.feedback).toBeNull();
     expect(patch.draftAttempts).toBe(1);

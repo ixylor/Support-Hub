@@ -197,6 +197,11 @@ describe("workflow graph", () => {
 
     const pending = await getPendingApproval(ticketId);
     expect(pending?.kind).toBe("send_email");
+    expect(pending?.proposal).toMatchObject({
+      kind: "answer",
+      body: "Reset your password.",
+      citedChunkIds: [],
+    });
 
     const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId));
     expect(ticket.status).toBe("pending_review");
