@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { tickets } from "@/lib/db/schema";
@@ -15,6 +15,10 @@ describe("approval permissions", () => {
     ticketId = await createTestTicket({});
     adminId = await createTestUser("admin");
     agentId = await createTestUser("agent");
+  });
+
+  afterEach(async () => {
+    await db.delete(tickets).where(eq(tickets.id, ticketId));
   });
 
   it("lets an admin decide any ticket", async () => {

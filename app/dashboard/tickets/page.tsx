@@ -29,6 +29,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 const FILTERS: { value: TicketListFilter; label: string }[] = [
   { value: "all", label: "All" },
+  { value: "needs_review", label: "Needs review" },
   { value: "mine", label: "Mine" },
   { value: "unassigned", label: "Unassigned" },
 ];
@@ -40,7 +41,7 @@ function parseFilter(value: string | undefined): TicketListFilter {
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; showTriagedOut?: string }>;
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
@@ -55,17 +56,35 @@ export default async function TicketsPage({
 
   // Agents only ever see their own tickets, so the filter would be a no-op
   // for them — it is an admin-only control.
-  const filter = isAdmin ? parseFilter((await searchParams).filter) : "all";
-  const ticketRows = await listTickets(viewer, filter);
+  const query = await searchParams;
+  const filter = isAdmin ? parseFilter(query.filter) : "all";
+  const showTriagedOut = isAdmin && query.showTriagedOut === "true";
+  const ticketRows = await listTickets(viewer, filter, { showTriagedOut });
+
+  function filterHref(value: TicketListFilter): string {
+    const params = new URLSearchParams();
+    if (value !== "all") params.set("filter", value);
+    if (showTriagedOut) params.set("showTriagedOut", "true");
+    const suffix = params.toString();
+    return suffix ? `/dashboard/tickets?${suffix}` : "/dashboard/tickets";
+  }
+
+  function triagedOutHref(): string {
+    const params = new URLSearchParams();
+    if (filter !== "all") params.set("filter", filter);
+    if (!showTriagedOut) params.set("showTriagedOut", "true");
+    const suffix = params.toString();
+    return suffix ? `/dashboard/tickets?${suffix}` : "/dashboard/tickets";
+  }
 
   const filterBar = isAdmin ? (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center justify-end gap-1">
       {FILTERS.map(({ value, label }) => (
         // Styled as a button but genuinely a link: it navigates, and
         // wrapping it in <Button> would strip that from assistive tech.
         <Link
           key={value}
-          href={value === "all" ? "/dashboard/tickets" : `/dashboard/tickets?filter=${value}`}
+          href={filterHref(value)}
           className={buttonVariants({
             size: "sm",
             variant: filter === value ? "secondary" : "ghost",
@@ -74,6 +93,16 @@ export default async function TicketsPage({
           {label}
         </Link>
       ))}
+      <span aria-hidden="true" className="mx-1 h-5 border-l" />
+      <Link
+        href={triagedOutHref()}
+        className={buttonVariants({
+          size: "sm",
+          variant: showTriagedOut ? "secondary" : "ghost",
+        })}
+      >
+        {showTriagedOut ? "Hide triaged out" : "Show triaged out"}
+      </Link>
     </div>
   ) : null;
 
@@ -94,6 +123,8 @@ export default async function TicketsPage({
                 "No tickets are assigned to you right now."
               ) : filter === "unassigned" ? (
                 "Every ticket currently has an owner."
+              ) : filter === "needs_review" ? (
+                "No tickets are waiting for review."
               ) : (
                 <>
                   Tickets appear here once a support mailbox is connected and polled for new mail.

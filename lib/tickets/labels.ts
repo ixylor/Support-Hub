@@ -15,6 +15,7 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
   escalated: "Escalated",
   resolved: "Resolved",
   waiting_on_customer: "Waiting on Customer",
+  triaged_out: "Triaged Out",
 };
 
 export const STATUS_VARIANTS: Record<TicketStatus, BadgeVariant> = {
@@ -24,6 +25,7 @@ export const STATUS_VARIANTS: Record<TicketStatus, BadgeVariant> = {
   escalated: "destructive",
   resolved: "outline",
   waiting_on_customer: "secondary",
+  triaged_out: "outline",
 };
 
 export const PRIORITY_LABELS: Record<TicketPriority, string> = {

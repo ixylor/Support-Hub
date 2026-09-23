@@ -307,7 +307,7 @@ export function DocumentList({
             {entries.map((entry) => {
               const stale = isStale(entry);
               return (
-                <TableRow key={entry.id}>
+                <TableRow id={entry.id} key={entry.id}>
                   <TableCell>
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium">{entry.title}</span>

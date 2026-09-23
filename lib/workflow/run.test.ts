@@ -1,8 +1,8 @@
 import { Command } from "@langchain/langgraph";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { ticketApprovals, workflowSettings } from "@/lib/db/schema";
+import { ticketApprovals, tickets, workflowSettings } from "@/lib/db/schema";
 import { createTestTicket } from "@/lib/test-helpers/tickets";
 import { resumeWorkflowRun, startWorkflowRun } from "./run";
 
@@ -19,6 +19,11 @@ describe("workflow run", () => {
     vi.clearAllMocks();
     await db.update(workflowSettings).set({ isEnabled: true });
     ticketId = await createTestTicket({});
+  });
+
+  afterEach(async () => {
+    await db.delete(ticketApprovals).where(eq(ticketApprovals.ticketId, ticketId));
+    await db.delete(tickets).where(eq(tickets.id, ticketId));
   });
 
   it("starts the graph on a thread derived from the ticket", async () => {

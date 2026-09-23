@@ -1,8 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { Command } from "@langchain/langgraph";
 import { db } from "@/lib/db/client";
-import { agents, aiDeployments, ticketApprovals, ticketMessages, tickets, workflowSettings } from "@/lib/db/schema";
+import {
+  agents,
+  aiDeployments,
+  llmLogs,
+  ticketApprovals,
+  ticketMessages,
+  tickets,
+  workflowSettings,
+} from "@/lib/db/schema";
 import { addInboundMessage, createTestTicket } from "@/lib/test-helpers/tickets";
 import { createTestUser } from "@/lib/test-helpers/users";
 import type { ChatClient } from "@/lib/ai/chat";
@@ -137,6 +145,13 @@ describe("workflow graph", () => {
     await addInboundMessage(ticketId, "I cannot sign in.", "<in-1@mail.example.test>");
     reviewerId = await createTestUser();
     vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await db.delete(ticketMessages).where(eq(ticketMessages.ticketId, ticketId));
+    await db.delete(ticketApprovals).where(eq(ticketApprovals.ticketId, ticketId));
+    await db.delete(llmLogs).where(eq(llmLogs.ticketId, ticketId));
+    await db.delete(tickets).where(eq(tickets.id, ticketId));
   });
 
   async function run(chat: ChatClient, transport: MailTransport) {

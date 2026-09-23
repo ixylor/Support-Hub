@@ -172,6 +172,42 @@ describe("tickets queries", () => {
     expect(result[0].lastMessageAt.toISOString()).toBe(empty.createdAt.toISOString());
   });
 
+  it("filters the review queue to tickets pending review", async () => {
+    await db.insert(tickets).values([
+      {
+        subject: "Needs review",
+        requesterEmail: "review@example.com",
+        status: "pending_review",
+        mailboxConnectionId: connectionId,
+        providerThreadId: crypto.randomUUID(),
+      },
+      {
+        subject: "Still new",
+        requesterEmail: "new@example.com",
+        status: "new",
+        mailboxConnectionId: connectionId,
+        providerThreadId: crypto.randomUUID(),
+      },
+    ]);
+
+    const result = await listTickets(admin, "needs_review");
+
+    expect(result.map((ticket) => ticket.subject)).toEqual(["Needs review"]);
+  });
+
+  it("hides triaged-out tickets by default and reveals them on request", async () => {
+    await db.insert(tickets).values({
+      subject: "Filtered junk",
+      requesterEmail: "junk@example.com",
+      status: "triaged_out",
+      mailboxConnectionId: connectionId,
+      providerThreadId: crypto.randomUUID(),
+    });
+
+    await expect(listTickets(admin)).resolves.toEqual([]);
+    await expect(listTickets(admin, "all", { showTriagedOut: true })).resolves.toHaveLength(1);
+  });
+
   it("returns the ticket plus its messages oldest-first, each with attachments", async () => {
     const [ticket] = await db
       .insert(tickets)

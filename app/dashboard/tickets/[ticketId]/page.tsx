@@ -15,8 +15,13 @@ import {
 } from "@/lib/tickets/labels";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getPendingApproval } from "@/lib/workflow/approvals";
+import { getApprovalCitations, getRunTimeline } from "@/lib/workflow/timeline";
+import { ApprovalPanel, type ApprovalProposal } from "./approval-panel";
 import { MessageList } from "./message-list";
 import { AssignDialog } from "./assign-dialog";
+import { RunTimeline } from "./run-timeline";
+import { RunWorkflowButton } from "./run-workflow-button";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -24,6 +29,20 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function approvalProposal(value: unknown): ApprovalProposal {
+  if (!value || typeof value !== "object") return {};
+  const proposal = value as Record<string, unknown>;
+  return {
+    kind:
+      proposal.kind === "answer" || proposal.kind === "question" ? proposal.kind : undefined,
+    body: typeof proposal.body === "string" ? proposal.body : undefined,
+    reason: typeof proposal.reason === "string" ? proposal.reason : undefined,
+    citedChunkIds: Array.isArray(proposal.citedChunkIds)
+      ? proposal.citedChunkIds.filter((id): id is string => typeof id === "string")
+      : undefined,
+  };
+}
 
 export default async function TicketThreadPage({
   params,
@@ -53,7 +72,15 @@ export default async function TicketThreadPage({
     notFound();
   }
 
-  const history = await listTicketAssignments(ticket.id);
+  const [history, pendingApproval, timeline] = await Promise.all([
+    listTicketAssignments(ticket.id),
+    getPendingApproval(ticket.id),
+    getRunTimeline(ticket.id),
+  ]);
+  const proposal = approvalProposal(pendingApproval?.proposal);
+  const citations = pendingApproval
+    ? await getApprovalCitations(pendingApproval.proposal)
+    : [];
 
   return (
     <div className="max-w-3xl">
@@ -61,13 +88,27 @@ export default async function TicketThreadPage({
         &larr; Back to tickets
       </Link>
 
-      <div className="mt-3 mb-6 flex items-start justify-between gap-4">
+      <div className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold">{ticket.subject}</h1>
           <p className="text-sm text-muted-foreground">{ticket.requesterEmail}</p>
         </div>
-        <Badge variant={STATUS_VARIANTS[ticket.status]}>{STATUS_LABELS[ticket.status]}</Badge>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {isAdmin ? <RunWorkflowButton ticketId={ticket.id} /> : null}
+          <Badge variant={STATUS_VARIANTS[ticket.status]}>{STATUS_LABELS[ticket.status]}</Badge>
+        </div>
       </div>
+
+      {pendingApproval ? (
+        <ApprovalPanel
+          ticketId={ticket.id}
+          approvalId={pendingApproval.id}
+          kind={pendingApproval.kind}
+          confidence={pendingApproval.confidence}
+          proposal={proposal}
+          citations={citations}
+        />
+      ) : null}
 
       <Card className="mb-6">
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
@@ -140,6 +181,8 @@ export default async function TicketThreadPage({
           ) : null}
         </CardContent>
       </Card>
+
+      <RunTimeline entries={timeline} />
 
       <MessageList
         messages={ticket.messages.map((message) => ({

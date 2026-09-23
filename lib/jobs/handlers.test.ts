@@ -107,6 +107,7 @@ describe("kb.process handler against a real queue", () => {
 });
 
 describe("workflow.run handler", () => {
+  let ticketId: string;
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -117,7 +118,7 @@ describe("workflow.run handler", () => {
   });
 
   it("escalates the ticket when the final retry fails", async () => {
-    const ticketId = await createTestTicket({});
+    ticketId = await createTestTicket({});
     workflowMocks.startWorkflowRun.mockRejectedValue(new Error("Azure stayed unavailable."));
     const job = {
       data: { ticketId, trigger: "new_ticket" },
@@ -132,7 +133,7 @@ describe("workflow.run handler", () => {
   });
 
   it("leaves the ticket alone while another retry remains", async () => {
-    const ticketId = await createTestTicket({});
+    ticketId = await createTestTicket({});
     workflowMocks.startWorkflowRun.mockRejectedValue(new Error("Temporary failure."));
     const job = {
       data: { ticketId, trigger: "customer_reply" },
@@ -144,5 +145,9 @@ describe("workflow.run handler", () => {
 
     const [ticket] = await db.select().from(tickets).where(eq(tickets.id, ticketId));
     expect(ticket.status).toBe("new");
+  });
+
+  afterEach(async () => {
+    await db.delete(tickets).where(eq(tickets.id, ticketId));
   });
 });

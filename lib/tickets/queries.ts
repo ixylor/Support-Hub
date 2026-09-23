@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
 import { attachments, ticketAssignments, ticketMessages, tickets } from "@/lib/db/schema";
@@ -73,9 +73,12 @@ function visibilityFilter(viewer: TicketViewer): SQL | undefined {
 
 // The list can be narrowed further in the UI. This is a view preference
 // layered on top of the visibility rule above, never a widening of it.
-export type TicketListFilter = "all" | "mine" | "unassigned";
+export type TicketListFilter = "all" | "mine" | "unassigned" | "needs_review";
 
 function listFilter(filter: TicketListFilter, viewer: TicketViewer): SQL | undefined {
+  if (filter === "needs_review") {
+    return eq(tickets.status, "pending_review");
+  }
   if (filter === "mine") {
     return eq(tickets.assignedToUserId, viewer.id);
   }
@@ -89,11 +92,14 @@ function listFilter(filter: TicketListFilter, viewer: TicketViewer): SQL | undef
 // and last activity alongside the ticket columns.
 export async function listTickets(
   viewer: TicketViewer,
-  filter: TicketListFilter = "all"
+  filter: TicketListFilter = "all",
+  options: { showTriagedOut?: boolean } = {}
 ): Promise<TicketListItem[]> {
-  const conditions = [visibilityFilter(viewer), listFilter(filter, viewer)].filter(
-    (condition): condition is SQL => condition !== undefined
-  );
+  const conditions = [
+    visibilityFilter(viewer),
+    listFilter(filter, viewer),
+    options.showTriagedOut ? undefined : ne(tickets.status, "triaged_out"),
+  ].filter((condition): condition is SQL => condition !== undefined);
 
   const rows = await db
     .select({
