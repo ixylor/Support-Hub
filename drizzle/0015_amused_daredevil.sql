@@ -1,4 +1,4 @@
-ALTER TYPE "public"."agent_key" ADD VALUE 'manual_writer';--> statement-breakpoint
+ALTER TYPE "public"."agent_key" ADD VALUE IF NOT EXISTS 'manual_writer';--> statement-breakpoint
 ALTER TABLE "attachments" DROP CONSTRAINT "attachments_ticket_message_id_ticket_messages_id_fk";
 --> statement-breakpoint
 ALTER TABLE "llm_logs" DROP CONSTRAINT "llm_logs_ticket_id_tickets_id_fk";
