@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth/server";
 import { Logo } from "@/components/branding/logo";
 import { Nav } from "@/components/dashboard/nav";
 import { SignOutButton } from "@/components/dashboard/sign-out-button";
+import { ThemeToggle } from "@/components/dashboard/theme-toggle";
+import { isThemeValue, THEME_COOKIE_NAME } from "@/lib/theme";
 import {
   Sidebar,
   SidebarContent,
@@ -29,6 +31,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // first paint instead of flashing expanded before collapsing.
   const sidebarState = (await cookies()).get("sidebar_state")?.value;
   const defaultOpen = sidebarState !== "false";
+
+  // Same idea as sidebar_state: read the choice server-side so the toggle
+  // renders already showing the right selection instead of flashing "system".
+  const themeCookie = (await cookies()).get(THEME_COOKIE_NAME)?.value;
+  const defaultTheme = isThemeValue(themeCookie) ? themeCookie : "system";
 
   return (
     <SidebarProvider defaultOpen={defaultOpen} className="h-svh overflow-hidden">
@@ -62,9 +69,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <div className="flex min-w-0 items-center gap-2 md:hidden">
               <Logo size="sm" />
             </div>
-            <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">
-              Press <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">⌘ B</kbd> to toggle sidebar
-            </span>
+            <ThemeToggle defaultTheme={defaultTheme} className="ml-auto" />
           </header>
           <main className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6 sm:py-7 lg:px-8">{children}</main>
         </div>
