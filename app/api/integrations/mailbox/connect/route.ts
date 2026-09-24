@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { getSecret } from "@/lib/secrets/store";
 import { getMailProvider } from "@/lib/ingestion/providers";
-import type { MailboxProvider } from "@/lib/mailbox/connection";
+import { getActiveMailboxConnection, type MailboxProvider } from "@/lib/mailbox/connection";
 import { clientIdSecretKey, MAILBOX_OAUTH_PROVIDERS } from "@/lib/mailbox/oauth-credentials";
 
 export async function GET(request: Request) {
@@ -21,6 +21,13 @@ export async function GET(request: Request) {
     );
   }
   const provider = requestedProvider as MailboxProvider;
+
+  if (await getActiveMailboxConnection()) {
+    return NextResponse.json(
+      { error: "Disconnect the current mailbox before connecting another one." },
+      { status: 409 }
+    );
+  }
 
   const clientId = await getSecret(clientIdSecretKey(provider));
   if (!clientId) {

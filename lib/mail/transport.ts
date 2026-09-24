@@ -4,6 +4,8 @@ export interface OutboundMessage {
   bodyText: string;
   // Provider-native conversation id when the mailbox supports it (Gmail).
   threadId?: string | null;
+  // Provider-native message id to reply to (Microsoft Graph).
+  replyToProviderMessageId?: string | null;
   // The Message-ID of the message being replied to, or null for a new thread.
   inReplyTo: string | null;
   // The full References chain, oldest first.
@@ -12,8 +14,7 @@ export interface OutboundMessage {
 
 export interface SentMessage {
   messageIdHeader: string | null;
-  // For SMTP these are the same value; other transports return a provider-
-  // assigned id distinct from the RFC 5322 Message-ID.
+  // Provider id used for local message deduplication and audit records.
   providerMessageId: string;
 }
 

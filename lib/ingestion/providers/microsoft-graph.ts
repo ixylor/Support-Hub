@@ -3,7 +3,7 @@ import type { AttachmentRef, MailProvider, OAuthTokens, ProviderMessage } from "
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const AUTHORIZE_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
-const SCOPE = "offline_access Mail.Read";
+const SCOPE = "offline_access User.Read Mail.Read Mail.Send";
 
 function getAuthorizationUrl(clientId: string, redirectUri: string, state: string): string {
   const params = new URLSearchParams({

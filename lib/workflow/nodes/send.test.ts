@@ -188,7 +188,7 @@ describe("send node", () => {
 
   it("records a failed attempt when the transport rejects, and creates no outbound message", async () => {
     const send = vi.fn(async () => {
-      throw new Error("smtp timeout");
+      throw new Error("mail provider timeout");
     });
     const transport: MailTransport = { send, async verify() {} };
 
@@ -203,7 +203,7 @@ describe("send node", () => {
       .from(ticketSendAttempts)
       .where(eq(ticketSendAttempts.approvalId, approvalId));
     expect(attempt.status).toBe("failed");
-    expect(attempt.errorText).toContain("smtp timeout");
+    expect(attempt.errorText).toContain("mail provider timeout");
     expect(attempt.completedAt).not.toBeNull();
 
     const rows = await db

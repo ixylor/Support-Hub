@@ -4,7 +4,11 @@ import postgres from "postgres";
 import { auth } from "@/lib/auth/server";
 import { getSecret } from "@/lib/secrets/store";
 import { getMailProvider } from "@/lib/ingestion/providers";
-import { connectMailbox, type MailboxProvider } from "@/lib/mailbox/connection";
+import {
+  connectMailbox,
+  MailboxAlreadyConnectedError,
+  type MailboxProvider,
+} from "@/lib/mailbox/connection";
 import { clientIdSecretKey, clientSecretSecretKey, MAILBOX_OAUTH_PROVIDERS } from "@/lib/mailbox/oauth-credentials";
 
 // The unique partial index that enforces "at most one active mailbox
@@ -58,9 +62,16 @@ export async function GET(request: NextRequest) {
       connectedByUserId: session.user.id,
     });
   } catch (error) {
+    if (error instanceof MailboxAlreadyConnectedError) {
+      const response = NextResponse.redirect(
+        new URL("/dashboard/settings/integrations?error=mailbox_already_connected", url.origin)
+      );
+      response.cookies.delete("mailbox_oauth_state");
+      return response;
+    }
     if (error instanceof postgres.PostgresError && error.code === UNIQUE_VIOLATION) {
       const response = NextResponse.redirect(
-        new URL("/dashboard/settings/integrations?error=already_connecting", url.origin)
+        new URL("/dashboard/settings/integrations?error=mailbox_already_connected", url.origin)
       );
       response.cookies.delete("mailbox_oauth_state");
       return response;

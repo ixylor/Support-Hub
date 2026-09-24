@@ -7,7 +7,7 @@ import { clientIdSecretKey, MAILBOX_OAUTH_PROVIDERS } from "@/lib/mailbox/oauth-
 import { IntegrationsForm } from "./integrations-form";
 
 const CALLBACK_ERROR_MESSAGES: Record<string, string> = {
-  already_connecting: "Another mailbox connection was completed at the same time. Please try again.",
+  mailbox_already_connected: "Disconnect the current mailbox before connecting another one.",
 };
 
 export default async function IntegrationsSettingsPage({

@@ -107,9 +107,11 @@ export async function sendNode(
   // keeps the outbound message attached to the customer's email even when a
   // ticket contains an older support reply or is replayed after a retry.
   let inReplyTo: string | null = null;
+  let replyToProviderMessageId: string | null = null;
   for (let index = state.thread.length - 1; index >= 0; index--) {
-    if (state.thread[index].direction === "inbound" && state.thread[index].messageIdHeader) {
+    if (state.thread[index].direction === "inbound") {
       inReplyTo = state.thread[index].messageIdHeader;
+      replyToProviderMessageId = state.thread[index].providerMessageId ?? null;
       break;
     }
   }
@@ -121,6 +123,7 @@ export async function sendNode(
       subject: replySubject(state.subject),
       bodyText: body,
       threadId: ticketThread?.providerThreadId ?? null,
+      replyToProviderMessageId,
       inReplyTo,
       references,
     });

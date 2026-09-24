@@ -5,6 +5,7 @@ export interface ThreadMessage {
   direction: "inbound" | "outbound";
   senderEmail: string;
   body: string;
+  providerMessageId?: string;
   messageIdHeader: string | null;
   sentAt: Date;
 }

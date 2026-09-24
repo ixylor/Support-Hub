@@ -6,7 +6,6 @@ import {
   Cable,
   CheckCircle2,
   CircleAlert,
-  Mail,
   Settings2,
   Sparkles,
 } from "lucide-react";
@@ -14,7 +13,6 @@ import type { LucideIcon } from "lucide-react";
 import { auth } from "@/lib/auth/server";
 import { getAzureCredentials, getActiveDeployment } from "@/lib/ai/config";
 import { getActiveMailboxConnection } from "@/lib/mailbox/connection";
-import { getActiveTransportConfig } from "@/lib/mail/config";
 import { getWorkflowSettings } from "@/lib/workflow/settings";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,11 +33,10 @@ export default async function SetupPage() {
     redirect("/dashboard");
   }
 
-  const [azure, chat, mailbox, email, workflow] = await Promise.all([
+  const [azure, chat, mailbox, workflow] = await Promise.all([
     getAzureCredentials(),
     getActiveDeployment("chat"),
     getActiveMailboxConnection(),
-    getActiveTransportConfig(),
     getWorkflowSettings(),
   ]);
 
@@ -56,13 +53,6 @@ export default async function SetupPage() {
       href: "/dashboard/settings/ai-provider",
       ready: Boolean(azure && chat),
       icon: Sparkles,
-    },
-    {
-      label: "Email transport",
-      description: "Configure SMTP so Support Hub can send replies.",
-      href: "/dashboard/settings/email",
-      ready: Boolean(email),
-      icon: Mail,
     },
     {
       label: "Support mailbox",

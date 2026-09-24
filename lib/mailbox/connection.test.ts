@@ -8,6 +8,7 @@ import {
   disconnectActiveMailbox,
   getActiveMailboxConnection,
   getDecryptedRefreshToken,
+  MailboxAlreadyConnectedError,
   setMailboxConnectionStatus,
   updateSyncCursor,
 } from "./connection";
@@ -82,26 +83,28 @@ describe("mailbox connection store", () => {
     expect(token).toBe("refresh-token-value");
   });
 
-  it("deactivates the previous connection when a new one is connected", async () => {
+  it("requires disconnecting the active mailbox before connecting another", async () => {
     await connectMailbox({
       provider: "microsoft",
       mailboxAddress: "old@example.com",
       refreshToken: "old-token",
       connectedByUserId: userId,
     });
-    await connectMailbox({
-      provider: "google",
-      mailboxAddress: "new@example.com",
-      refreshToken: "new-token",
-      connectedByUserId: userId,
-    });
+    await expect(
+      connectMailbox({
+        provider: "google",
+        mailboxAddress: "new@example.com",
+        refreshToken: "new-token",
+        connectedByUserId: userId,
+      })
+    ).rejects.toBeInstanceOf(MailboxAlreadyConnectedError);
 
     const active = await getActiveMailboxConnection();
     const allConnections = await db.select().from(mailboxConnections);
 
-    expect(active?.mailboxAddress).toBe("new@example.com");
+    expect(active?.mailboxAddress).toBe("old@example.com");
     expect(allConnections.filter((row) => row.status === "active")).toHaveLength(1);
-    expect(allConnections).toHaveLength(2);
+    expect(allConnections).toHaveLength(1);
   });
 
   it("disconnects the active mailbox", async () => {

@@ -6,6 +6,13 @@ import { decryptSecret, encryptSecret } from "@/lib/secrets/crypto";
 export type MailboxProvider = "microsoft" | "google";
 export type MailboxStatus = "active" | "disconnected" | "error";
 
+export class MailboxAlreadyConnectedError extends Error {
+  constructor() {
+    super("Disconnect the current mailbox before connecting another one.");
+    this.name = "MailboxAlreadyConnectedError";
+  }
+}
+
 export interface MailboxConnectionSummary {
   id: string;
   provider: MailboxProvider;
@@ -51,10 +58,13 @@ export async function connectMailbox(input: {
   connectedByUserId: string;
 }): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx
-      .update(mailboxConnections)
-      .set({ status: "disconnected" })
-      .where(eq(mailboxConnections.status, "active"));
+    const [activeConnection] = await tx
+      .select({ id: mailboxConnections.id })
+      .from(mailboxConnections)
+      .where(eq(mailboxConnections.status, "active"))
+      .limit(1)
+      .for("update");
+    if (activeConnection) throw new MailboxAlreadyConnectedError();
 
     // Start the cursor at connection time rather than leaving it null: "sync from
     // now" is the intended behaviour for a freshly connected mailbox (no backfill of

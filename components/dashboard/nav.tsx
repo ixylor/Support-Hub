@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, Cable, Inbox, Mail, SlidersHorizontal, BookOpen, UsersRound } from "lucide-react";
+import { BarChart3, Bot, Cable, Inbox, SlidersHorizontal, BookOpen, UsersRound } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -18,7 +18,6 @@ const adminOnlyLinks = [
   { href: "/dashboard/settings/agents", label: "Agents", icon: SlidersHorizontal },
   { href: "/dashboard/settings/integrations", label: "Integrations", icon: Cable },
   { href: "/dashboard/settings/ai-provider", label: "AI Provider", icon: Bot },
-  { href: "/dashboard/settings/email", label: "Email", icon: Mail },
   { href: "/dashboard/settings/users", label: "Users", icon: UsersRound },
 ];
 

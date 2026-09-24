@@ -134,6 +134,13 @@
       "when": 1790137412141,
       "tag": "0018_slippery_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790214339910,
+      "tag": "0019_remove_smtp_mail_transport",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,6 @@ import { Logo } from "@/components/branding/logo";
 import { auth } from "@/lib/auth/server";
 import { getAzureCredentials, getActiveDeployment } from "@/lib/ai/config";
 import { getActiveMailboxConnection } from "@/lib/mailbox/connection";
-import { getActiveTransportConfig } from "@/lib/mail/config";
 import { getWorkflowSettings } from "@/lib/workflow/settings";
 
 const destinations = [
@@ -24,14 +23,13 @@ export default async function DashboardPage() {
         getAzureCredentials(),
         getActiveDeployment("chat"),
         getActiveMailboxConnection(),
-        getActiveTransportConfig(),
         getWorkflowSettings(),
       ])
     : null;
   const setupIncomplete =
     isAdmin &&
     setupState !== null &&
-    !(setupState[0] && setupState[1] && setupState[2] && setupState[3] && setupState[4].isEnabled);
+    !(setupState[0] && setupState[1] && setupState[2] && setupState[3].isEnabled);
 
   // Keep the first admin visit focused: the setup checklist is the only
   // useful destination until the required connections exist.

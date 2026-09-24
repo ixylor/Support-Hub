@@ -60,6 +60,7 @@ export async function loadContextNode(state: WorkflowState): Promise<Partial<Wor
       direction: ticketMessages.direction,
       senderEmail: ticketMessages.senderEmail,
       body: ticketMessages.body,
+      providerMessageId: ticketMessages.providerMessageId,
       messageIdHeader: ticketMessages.messageIdHeader,
       sentAt: ticketMessages.sentAt,
     })

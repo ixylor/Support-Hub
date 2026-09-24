@@ -374,39 +374,6 @@ export const aiDeployments = pgTable(
   ]
 );
 
-export const mailTransportKindEnum = pgEnum("mail_transport_kind", ["smtp"]);
-
-// Rows rather than fixed env keys so an admin can change mail settings from
-// the UI without a redeploy — same reasoning as ai_deployments.
-export const mailTransports = pgTable(
-  "mail_transports",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    kind: mailTransportKindEnum("kind").notNull(),
-    name: text("name").notNull(),
-    // Non-secret connection details: host, port, secure, username,
-    // fromAddress, fromName. The password is deliberately NOT in here — a
-    // jsonb column ends up in a log line or a debug dump eventually.
-    config: jsonb("config").notNull(),
-    encryptedPassword: text("encrypted_password").notNull(),
-    isActive: boolean("is_active").notNull().default(true),
-    updatedByUserId: text("updated_by_user_id")
-      .notNull()
-      .references(() => user.id),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (table) => [
-    // Mirrors ai_deployments_one_active_per_role: the database itself refuses
-    // two active transports.
-    uniqueIndex("mail_transports_one_active")
-      .on(table.isActive)
-      .where(sql`${table.isActive} = true`),
-  ]
-);
-
 export const approvalKindEnum = pgEnum("approval_kind", [
   "send_email",
   "triage_out",

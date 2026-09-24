@@ -96,7 +96,11 @@ export async function POST(
   if (!row) return NextResponse.json({ error: "Ticket mailbox not found." }, { status: 404 });
 
   const thread = await db
-    .select({ direction: ticketMessages.direction, messageIdHeader: ticketMessages.messageIdHeader })
+    .select({
+      direction: ticketMessages.direction,
+      providerMessageId: ticketMessages.providerMessageId,
+      messageIdHeader: ticketMessages.messageIdHeader,
+    })
     .from(ticketMessages)
     .where(eq(ticketMessages.ticketId, ticketId))
     .orderBy(asc(ticketMessages.sentAt));
@@ -104,9 +108,11 @@ export async function POST(
     .map((message) => message.messageIdHeader)
     .filter((header): header is string => Boolean(header));
   let inReplyTo: string | null = null;
+  let replyToProviderMessageId: string | null = null;
   for (let index = thread.length - 1; index >= 0; index--) {
-    if (thread[index].direction === "inbound" && thread[index].messageIdHeader) {
+    if (thread[index].direction === "inbound") {
       inReplyTo = thread[index].messageIdHeader;
+      replyToProviderMessageId = thread[index].providerMessageId;
       break;
     }
   }
@@ -116,6 +122,7 @@ export async function POST(
     subject: replySubject(row.subject),
     bodyText: body,
     threadId: row.providerThreadId,
+    replyToProviderMessageId,
     inReplyTo,
     references,
   });
