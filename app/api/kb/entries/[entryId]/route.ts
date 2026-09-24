@@ -7,14 +7,14 @@ import { kbEntries } from "@/lib/db/schema";
 import { deleteEntry } from "@/lib/kb/entries";
 
 // The list query deliberately omits `content` to stay small, so the "view
-// extracted text" dialog fetches it here on demand.
+// article text" dialog fetches it here on demand.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ entryId: string }> }
 ) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || (session.user as { role: string }).role !== "admin") {
-    return NextResponse.json({ error: "Only admins can read documents." }, { status: 403 });
+    return NextResponse.json({ error: "Only admins can read knowledge base articles." }, { status: 403 });
   }
 
   const { entryId } = await params;
@@ -37,7 +37,7 @@ export async function DELETE(
 ) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || (session.user as { role: string }).role !== "admin") {
-    return NextResponse.json({ error: "Only admins can delete documents." }, { status: 403 });
+    return NextResponse.json({ error: "Only admins can delete knowledge base articles." }, { status: 403 });
   }
 
   const { entryId } = await params;

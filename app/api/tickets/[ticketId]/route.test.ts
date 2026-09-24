@@ -1,5 +1,3 @@
-import { mkdir, access, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { DELETE, PATCH } from "./route";
@@ -15,7 +13,6 @@ import {
   tickets,
 } from "@/lib/db/schema";
 import { user } from "@/lib/auth/schema";
-import { attachmentsDir } from "@/lib/ingestion/attachment-storage";
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
 
@@ -136,9 +133,6 @@ describe("DELETE /api/tickets/[ticketId]", () => {
     const ticketId = await createTicket("resolved");
     const providerMessageId = `delete-route-message-${crypto.randomUUID()}`;
     const graphThreadId = `ticket:${ticketId}`;
-    const attachmentPath = resolve(attachmentsDir(), `delete-route-${crypto.randomUUID()}.txt`);
-    await mkdir(resolve(attachmentsDir()), { recursive: true });
-    await writeFile(attachmentPath, "attachment");
 
     const [message] = await db
       .insert(ticketMessages)
@@ -153,7 +147,7 @@ describe("DELETE /api/tickets/[ticketId]", () => {
     await db.insert(attachments).values({
       ticketMessageId: message.id,
       filename: "test.txt",
-      storagePath: attachmentPath,
+      providerAttachmentId: "provider-attachment-id",
       contentType: "text/plain",
       sizeBytes: 10,
     });
@@ -208,7 +202,6 @@ describe("DELETE /api/tickets/[ticketId]", () => {
     expect((await db.select().from(ticketApprovals).where(eq(ticketApprovals.ticketId, ticketId)))).toHaveLength(0);
     expect((await db.select().from(ticketSendAttempts).where(eq(ticketSendAttempts.ticketId, ticketId)))).toHaveLength(0);
     expect((await db.select().from(llmLogs).where(eq(llmLogs.ticketId, ticketId)))).toHaveLength(0);
-    await expect(access(attachmentPath)).rejects.toThrow();
     const [checkpoint] = await db.execute(sql`
       SELECT 1 FROM "checkpoints" WHERE "thread_id" = ${graphThreadId} LIMIT 1
     `);

@@ -3,7 +3,7 @@ import { db } from "@/lib/db/client";
 import { aiDeployments } from "@/lib/db/schema";
 import { getSecret, setSecret, SecretDecryptionError } from "@/lib/secrets/store";
 
-export type DeploymentRole = "chat" | "embedding" | "extraction";
+export type DeploymentRole = "chat" | "embedding";
 
 export interface AzureCredentials {
   endpoint: string;

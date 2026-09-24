@@ -1,6 +1,3 @@
-import { access, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -9,7 +6,6 @@ import { user } from "@/lib/auth/schema";
 import { activateDeployment, setAzureCredentials } from "@/lib/ai/config";
 import {
   createArticleEntry,
-  createUploadedEntry,
   deleteEntry,
   knowledgeBaseReadiness,
   listEntries,
@@ -23,12 +19,7 @@ vi.mock("@/lib/jobs/boss", () => ({
 
 describe("knowledge base entries", () => {
   let adminId: string;
-  let dir: string;
-
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "kb-entries-test-"));
-    vi.stubEnv("KB_STORAGE_DIR", dir);
-
     const [row] = await db
       .insert(user)
       .values({
@@ -43,20 +34,10 @@ describe("knowledge base entries", () => {
 
   afterEach(async () => {
     vi.unstubAllEnvs();
-    await rm(dir, { recursive: true, force: true });
     await db.delete(kbEntries);
     await db.delete(aiDeployments);
     await db.delete(appSecrets);
   });
-
-  async function pathExists(path: string): Promise<boolean> {
-    try {
-      await access(path);
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   async function configureProvider(): Promise<void> {
     await setAzureCredentials(
@@ -99,50 +80,6 @@ describe("knowledge base entries", () => {
     expect(await knowledgeBaseReadiness()).toEqual({ ready: true });
   });
 
-  it("creates a pending entry for an uploaded file", async () => {
-    const id = await createUploadedEntry({
-      title: "Refund policy",
-      tags: ["billing"],
-      filename: "policy.md",
-      contentType: "text/markdown",
-      content: Buffer.from("# Refunds"),
-      uploadedByUserId: adminId,
-    });
-
-    const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, id));
-    expect(entry.status).toBe("pending");
-    expect(entry.sourceType).toBe("markdown");
-    expect(entry.tags).toEqual(["billing"]);
-    expect(entry.storagePath).toContain(id);
-    expect(entry.sizeBytes).toBe(9);
-  });
-
-  it("rejects an unsupported content type", async () => {
-    await expect(
-      createUploadedEntry({
-        title: "Logo",
-        tags: [],
-        filename: "logo.png",
-        contentType: "image/png",
-        content: Buffer.from("x"),
-        uploadedByUserId: adminId,
-      })
-    ).rejects.toThrow(/not supported/i);
-  });
-
-  it("rejects a file over the size cap", async () => {
-    await expect(
-      createUploadedEntry({
-        title: "Huge",
-        tags: [],
-        filename: "huge.txt",
-        contentType: "text/plain",
-        content: Buffer.alloc(26 * 1024 * 1024),
-        uploadedByUserId: adminId,
-      })
-    ).rejects.toThrow(/too large/i);
-  });
-
   it("creates an article entry with its body as content", async () => {
     const id = await createArticleEntry({
       title: "Shipping",
@@ -154,7 +91,6 @@ describe("knowledge base entries", () => {
     const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, id));
     expect(entry.sourceType).toBe("article");
     expect(entry.content).toBe("We ship on weekdays.");
-    expect(entry.storagePath).toBeNull();
   });
 
   it("rejects an empty title", async () => {
@@ -230,40 +166,7 @@ describe("knowledge base entries", () => {
     expect(await db.select().from(kbChunks).where(eq(kbChunks.kbEntryId, id))).toHaveLength(0);
   });
 
-  it("deletes the uploaded file when its entry is deleted", async () => {
-    const id = await createUploadedEntry({
-      title: "Refund policy",
-      tags: [],
-      filename: "policy.md",
-      contentType: "text/markdown",
-      content: Buffer.from("# Refunds"),
-      uploadedByUserId: adminId,
-    });
-    const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, id));
-    const storagePath = entry.storagePath!;
-    expect(await pathExists(storagePath)).toBe(true);
-
-    await deleteEntry(id);
-
-    expect(await pathExists(storagePath)).toBe(false);
-  });
-
-  it("succeeds deleting an entry whose file is already gone", async () => {
-    const id = await createUploadedEntry({
-      title: "Refund policy",
-      tags: [],
-      filename: "policy.md",
-      contentType: "text/markdown",
-      content: Buffer.from("# Refunds"),
-      uploadedByUserId: adminId,
-    });
-    const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, id));
-    await rm(entry.storagePath!);
-
-    await expect(deleteEntry(id)).resolves.toBeUndefined();
-  });
-
-  it("deletes an article with no storagePath without error", async () => {
+  it("deletes a text article", async () => {
     const id = await createArticleEntry({
       title: "Article",
       tags: [],

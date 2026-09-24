@@ -121,7 +121,7 @@ describe("ai_deployments", () => {
 
     await db.insert(aiDeployments).values([
       { role: "chat", deploymentName: "gpt-4.1", modelName: "gpt-4.1", isActive: true, updatedByUserId: adminId },
-      { role: "extraction", deploymentName: "gpt-4.1", modelName: "gpt-4.1", isActive: true, updatedByUserId: adminId },
+      { role: "embedding", deploymentName: "embed", modelName: "text-embedding-3-small", dimensions: 1536, isActive: true, updatedByUserId: adminId },
     ]);
 
     const rows = await db.select().from(aiDeployments);
@@ -134,15 +134,15 @@ describe("kb_entries and kb_chunks", () => {
     await db.delete(kbEntries);
   });
 
-  it("defaults a new entry to pending with empty tags and no content", async () => {
+  it("defaults a new entry to pending with empty tags", async () => {
     const [entry] = await db
       .insert(kbEntries)
-      .values({ title: "Refund policy", sourceType: "article" })
+      .values({ title: "Refund policy", sourceType: "article", content: "Body" })
       .returning();
 
     expect(entry.status).toBe("pending");
     expect(entry.tags).toEqual([]);
-    expect(entry.content).toBeNull();
+    expect(entry.content).toBe("Body");
   });
 
   it("deletes chunks when their entry is deleted", async () => {

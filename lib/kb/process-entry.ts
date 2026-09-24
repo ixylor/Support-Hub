@@ -5,27 +5,6 @@ import { kbChunks, kbEntries } from "@/lib/db/schema";
 import { embedTexts } from "@/lib/ai/embeddings";
 import { AiNotConfiguredError, RetryableAiError } from "@/lib/ai/errors";
 import { chunkText } from "./chunk";
-import { getParser } from "./parsers";
-import { readKbFile } from "./storage";
-
-async function extractContent(entry: typeof kbEntries.$inferSelect): Promise<string> {
-  // A typed-in article already holds its text; there is nothing to parse.
-  if (entry.sourceType === "article") {
-    return entry.content ?? "";
-  }
-
-  if (!entry.storagePath || !entry.contentType) {
-    throw new Error("Uploaded entry is missing its stored file reference.");
-  }
-
-  const parser = getParser(entry.contentType);
-  if (!parser) {
-    throw new Error(`No parser is registered for ${entry.contentType}.`);
-  }
-
-  const buffer = await readKbFile(entry.storagePath);
-  return parser.extract(buffer);
-}
 
 // Shared by the normal permanent-failure path below and by the job handler,
 // which calls this once pg-boss has exhausted its retries on a
@@ -47,11 +26,11 @@ export async function processKbEntry(entryId: string): Promise<void> {
     .where(eq(kbEntries.id, entryId));
 
   try {
-    const content = (await extractContent(entry)).trim();
+    const content = (entry.content ?? "").trim();
 
     if (content === "") {
       throw new Error(
-        "The document contained no readable text. It may be empty or corrupt."
+        "Article text is empty. Add text before processing it."
       );
     }
 

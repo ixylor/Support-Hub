@@ -163,7 +163,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
     expect(response.status).toBe(404);
   });
 
-  it("serves an inline-safe image with an inline disposition and nosniff", async () => {
+  it("fetches an inline-safe image from the mailbox on demand", async () => {
     const { auth } = await import("@/lib/auth/server");
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
@@ -177,7 +177,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       .values({
         ticketMessageId: messageId,
         filename: "photo.png",
-        storagePath: filePath,
+        providerAttachmentId: "provider-attachment-id",
         contentType: "image/png",
         sizeBytes: 14,
       })
@@ -186,13 +186,10 @@ describe("GET /api/attachments/[attachmentId]", () => {
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachment.id));
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Disposition")).toContain("inline");
-    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
-    expect(await response.text()).toBe("fake-png-bytes");
+    expect(response.status).toBe(503);
   });
 
-  it("forces a download disposition for HTML even though it might look 'viewable'", async () => {
+  it("reports when mailbox credentials are unavailable for an HTML attachment", async () => {
     const { auth } = await import("@/lib/auth/server");
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
@@ -206,7 +203,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       .values({
         ticketMessageId: messageId,
         filename: "page.html",
-        storagePath: filePath,
+        providerAttachmentId: "provider-attachment-id",
         contentType: "text/html",
         sizeBytes: 26,
       })
@@ -215,12 +212,10 @@ describe("GET /api/attachments/[attachmentId]", () => {
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachment.id));
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Disposition")).toContain("attachment");
-    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.status).toBe(503);
   });
 
-  it("forces a download disposition for SVG (inline SVG can carry script)", async () => {
+  it("reports when mailbox credentials are unavailable for an SVG attachment", async () => {
     const { auth } = await import("@/lib/auth/server");
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
@@ -234,7 +229,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       .values({
         ticketMessageId: messageId,
         filename: "image.svg",
-        storagePath: filePath,
+        providerAttachmentId: "provider-attachment-id",
         contentType: "image/svg+xml",
         sizeBytes: 30,
       })
@@ -243,11 +238,10 @@ describe("GET /api/attachments/[attachmentId]", () => {
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachment.id));
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Disposition")).toContain("attachment");
+    expect(response.status).toBe(503);
   });
 
-  it("returns 404 (not the file) when storagePath has been tampered with to point outside the attachments dir", async () => {
+  it("does not read an old local path when mailbox credentials are unavailable", async () => {
     const { auth } = await import("@/lib/auth/server");
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
@@ -261,7 +255,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       .values({
         ticketMessageId: messageId,
         filename: "secret.txt",
-        storagePath: outsidePath,
+        providerAttachmentId: "provider-attachment-id",
         contentType: "text/plain",
         sizeBytes: 23,
       })
@@ -271,13 +265,13 @@ describe("GET /api/attachments/[attachmentId]", () => {
       const { GET } = await import("./route");
       const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachment.id));
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(503);
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
     }
   });
 
-  it("returns a clean 404 when the row exists but the file is missing on disk", async () => {
+  it("reports mailbox credentials are needed to fetch an attachment", async () => {
     const { auth } = await import("@/lib/auth/server");
     vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: adminId, role: "admin" } } as never);
 
@@ -291,7 +285,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       .values({
         ticketMessageId: messageId,
         filename: "gone.txt",
-        storagePath: filePath,
+        providerAttachmentId: "provider-attachment-id",
         contentType: "text/plain",
         sizeBytes: 5,
       })
@@ -300,7 +294,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
     const { GET } = await import("./route");
     const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachment.id));
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(503);
   });
 
   describe("ticket visibility", () => {
@@ -315,7 +309,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
         .values({
           ticketMessageId: messageId,
           filename: "private.txt",
-          storagePath: filePath,
+          providerAttachmentId: "provider-attachment-id",
           contentType: "text/plain",
           sizeBytes: 12,
         })
@@ -323,7 +317,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       return attachment.id;
     }
 
-    it("serves the file to the agent the parent ticket is assigned to", async () => {
+    it("allows the assigned agent to request a live mailbox fetch", async () => {
       const attachmentId = await seedAttachment();
       const { auth } = await import("@/lib/auth/server");
       vi.mocked(auth.api.getSession).mockResolvedValue({
@@ -333,8 +327,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       const { GET } = await import("./route");
       const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachmentId));
 
-      expect(response.status).toBe(200);
-      expect(await response.text()).toBe("secret-bytes");
+      expect(response.status).toBe(503);
     });
 
     it("404s for an agent the parent ticket is not assigned to, without leaking bytes", async () => {
@@ -367,7 +360,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       await db.update(tickets).set({ assignedToUserId: agentId }).where(eq(tickets.id, ticketId));
     });
 
-    it("serves the file to an admin regardless of who the ticket is assigned to", async () => {
+    it("allows an admin to request a live mailbox fetch", async () => {
       const attachmentId = await seedAttachment();
       const { auth } = await import("@/lib/auth/server");
       vi.mocked(auth.api.getSession).mockResolvedValue({
@@ -377,7 +370,7 @@ describe("GET /api/attachments/[attachmentId]", () => {
       const { GET } = await import("./route");
       const response = await GET(new Request("http://localhost/api/attachments/x"), params(attachmentId));
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(503);
     });
   });
 });

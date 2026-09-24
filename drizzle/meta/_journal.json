@@ -141,6 +141,13 @@
       "when": 1790214339910,
       "tag": "0019_remove_smtp_mail_transport",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790214339911,
+      "tag": "0020_text_only_knowledge_base_live_attachments",
+      "breakpoints": true
     }
   ]
 }

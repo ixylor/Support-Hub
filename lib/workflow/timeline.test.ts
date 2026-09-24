@@ -85,7 +85,7 @@ describe("workflow timeline", () => {
   it("resolves cited chunk titles and ignores malformed ids", async () => {
     const [entry] = await db
       .insert(kbEntries)
-      .values({ title: "Password reset", sourceType: "article", status: "ready" })
+      .values({ title: "Password reset", sourceType: "article", content: "Reset instructions", status: "ready" })
       .returning({ id: kbEntries.id });
     entryIds.push(entry.id);
     const [chunk] = await db

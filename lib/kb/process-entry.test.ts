@@ -113,7 +113,7 @@ describe("processKbEntry", () => {
     expect(chunks[0].chunkText).toContain("Second version");
   });
 
-  it("fails the entry when extraction yields no text", async () => {
+  it("fails the entry when article text is empty", async () => {
     mockEmbeddings();
     const entryId = await createArticle("   ");
 
@@ -121,7 +121,7 @@ describe("processKbEntry", () => {
 
     const [entry] = await db.select().from(kbEntries).where(eq(kbEntries.id, entryId));
     expect(entry.status).toBe("failed");
-    expect(entry.errorMessage).toMatch(/no readable text/i);
+    expect(entry.errorMessage).toMatch(/article text is empty/i);
   });
 
   it("rethrows a retryable error and leaves the entry processing for pg-boss to retry", async () => {
@@ -151,15 +151,14 @@ describe("processKbEntry", () => {
     expect(chunks[0].chunkText).toContain("First version");
   });
 
-  it("records a permanent failure on the entry without throwing", async () => {
+  it("records a permanent failure for an empty text entry without throwing", async () => {
     mockEmbeddings();
     const [entry] = await db
       .insert(kbEntries)
       .values({
-        title: "Missing file",
-        sourceType: "pdf",
-        storagePath: "./storage/kb/does-not-exist/missing.pdf",
-        contentType: "application/pdf",
+        title: "Empty article",
+        sourceType: "article",
+        content: "",
         uploadedByUserId: adminId,
       })
       .returning({ id: kbEntries.id });

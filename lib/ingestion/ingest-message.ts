@@ -10,16 +10,13 @@ import {
 import { enqueue } from "@/lib/jobs/boss";
 import { QUEUES } from "@/lib/jobs/queues";
 import { supersedePendingApprovals } from "@/lib/workflow/approvals";
-import type { MailProvider, ProviderMessage } from "./provider";
-import { saveAttachment } from "./attachment-storage";
+import type { ProviderMessage } from "./provider";
 
 const REOPENABLE_STATUSES = ["resolved", "waiting_on_customer"] as const;
 
 export async function ingestMessage(
   mailboxConnectionId: string,
-  message: ProviderMessage,
-  provider: MailProvider,
-  accessToken: string
+  message: ProviderMessage
 ): Promise<void> {
   const [existingMessage] = await db
     .select({ id: ticketMessages.id })
@@ -47,24 +44,6 @@ export async function ingestMessage(
       )
       .limit(1);
     if (deletedThread) return;
-  }
-
-  // Download and persist attachments to disk before touching the database so
-  // that a failure here never leaves a half-ingested ticket or message row
-  // behind. The per-message directory is keyed on the provider message id
-  // (stable and unique) rather than the ticket_messages row, since that row
-  // does not exist yet — and resolving/creating the ticket happens later,
-  // inside the same transaction as the message, so it doesn't exist yet either.
-  const storedAttachments: { filename: string; storagePath: string; contentType: string; sizeBytes: number }[] = [];
-  for (const attachment of message.attachments) {
-    const content = await provider.downloadAttachment(accessToken, message.providerMessageId, attachment);
-    const storagePath = await saveAttachment(message.providerMessageId, attachment.filename, content);
-    storedAttachments.push({
-      filename: attachment.filename,
-      storagePath,
-      contentType: attachment.contentType,
-      sizeBytes: content.byteLength,
-    });
   }
 
   const ingested = await db.transaction(async (tx) => {
@@ -241,16 +220,18 @@ export async function ingestMessage(
 
     if (!insertedMessage) {
       // Another poll cycle ingested this message concurrently. The
-      // attachments we just downloaded become orphaned files on disk,
-      // which is harmless — nothing references them.
+      // This message was ingested concurrently, so there is nothing to add.
       return null;
     }
 
-    if (storedAttachments.length > 0) {
+    if (message.attachments.length > 0) {
       await tx.insert(attachments).values(
-        storedAttachments.map((stored) => ({
+        message.attachments.map((attachment) => ({
           ticketMessageId: insertedMessage.id,
-          ...stored,
+          filename: attachment.filename,
+          providerAttachmentId: attachment.id,
+          contentType: attachment.contentType,
+          sizeBytes: attachment.sizeBytes ?? 0,
         }))
       );
     }

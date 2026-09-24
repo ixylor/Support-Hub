@@ -84,7 +84,7 @@ describe("ingestMessage", () => {
     const threadId = crypto.randomUUID();
     const message = buildMessage({ providerThreadId: threadId });
 
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
 
     const [ticket] = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
     expect(ticket.status).toBe("new");
@@ -99,12 +99,10 @@ describe("ingestMessage", () => {
 
   it("threads a second message into the existing ticket for the same thread", async () => {
     const threadId = crypto.randomUUID();
-    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }));
     await ingestMessage(
       connectionId,
-      buildMessage({ providerThreadId: threadId, subject: "Re: Help needed" }),
-      fakeProvider,
-      "access-token"
+      buildMessage({ providerThreadId: threadId, subject: "Re: Help needed" })
     );
 
     const ticketRows = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
@@ -126,11 +124,11 @@ describe("ingestMessage", () => {
 
   it("reopens a resolved ticket when a new reply arrives on its thread", async () => {
     const threadId = crypto.randomUUID();
-    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }));
     const [ticket] = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
     await db.update(tickets).set({ status: "resolved" }).where(eq(tickets.id, ticket.id));
 
-    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }));
 
     const [reopened] = await db.select().from(tickets).where(eq(tickets.id, ticket.id));
     expect(reopened.status).toBe("new");
@@ -138,11 +136,11 @@ describe("ingestMessage", () => {
 
   it("reopens a ticket waiting on the customer when a new reply arrives on its thread", async () => {
     const threadId = crypto.randomUUID();
-    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }));
     const [ticket] = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
     await db.update(tickets).set({ status: "waiting_on_customer" }).where(eq(tickets.id, ticket.id));
 
-    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }));
 
     const [reopened] = await db.select().from(tickets).where(eq(tickets.id, ticket.id));
     expect(reopened.status).toBe("new");
@@ -164,12 +162,10 @@ describe("ingestMessage", () => {
       .returning({ id: mailboxConnections.id });
 
     const threadId = crypto.randomUUID();
-    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }), fakeProvider, "access-token");
+    await ingestMessage(connectionId, buildMessage({ providerThreadId: threadId }));
     await ingestMessage(
       otherConnection.id,
-      buildMessage({ providerThreadId: threadId }),
-      fakeProvider,
-      "access-token"
+      buildMessage({ providerThreadId: threadId })
     );
 
     const ticketRows = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
@@ -193,8 +189,8 @@ describe("ingestMessage", () => {
 
   it("skips a message whose provider message id was already ingested", async () => {
     const message = buildMessage();
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
+    await ingestMessage(connectionId, message);
 
     const rows = await db
       .select()
@@ -206,7 +202,7 @@ describe("ingestMessage", () => {
 
   it("handles a concurrent duplicate insert gracefully instead of throwing", async () => {
     const message = buildMessage();
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
 
     // Simulate a second poll cycle that already passed its own dedupe SELECT
     // for the same message by inserting directly, racing the real insert.
@@ -225,7 +221,7 @@ describe("ingestMessage", () => {
 
     // ingestMessage itself, given the same already-ingested message, must
     // return gracefully rather than throwing a raw unique-violation.
-    await expect(ingestMessage(connectionId, message, fakeProvider, "access-token")).resolves.toBeUndefined();
+    await expect(ingestMessage(connectionId, message)).resolves.toBeUndefined();
 
     const rows = await db
       .select()
@@ -234,7 +230,7 @@ describe("ingestMessage", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("leaves no message row when an attachment download fails partway through", async () => {
+  it("records attachment metadata without downloading the file", async () => {
     const failingProvider: MailProvider = {
       ...fakeProvider,
       downloadAttachment: vi
@@ -249,19 +245,17 @@ describe("ingestMessage", () => {
       ],
     });
 
-    await expect(ingestMessage(connectionId, message, failingProvider, "access-token")).rejects.toThrow(
-      "network blip"
-    );
+    await expect(ingestMessage(connectionId, message)).resolves.toBeUndefined();
 
     const rows = await db
       .select()
       .from(ticketMessages)
       .where(eq(ticketMessages.providerMessageId, message.providerMessageId));
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
 
     // Retrying with a working provider must succeed cleanly, proving the
     // failed attempt left nothing behind that would block a retry.
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
     const retried = await db
       .select()
       .from(ticketMessages)
@@ -269,7 +263,7 @@ describe("ingestMessage", () => {
     expect(retried).toHaveLength(1);
   });
 
-  it("leaves no ticket row when an attachment download fails partway through a new thread", async () => {
+  it("creates the ticket while recording attachments as metadata", async () => {
     const failingProvider: MailProvider = {
       ...fakeProvider,
       downloadAttachment: vi
@@ -286,26 +280,24 @@ describe("ingestMessage", () => {
       ],
     });
 
-    await expect(ingestMessage(connectionId, message, failingProvider, "access-token")).rejects.toThrow(
-      "network blip"
-    );
+    await expect(ingestMessage(connectionId, message)).resolves.toBeUndefined();
 
     const ticketRows = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
-    expect(ticketRows).toHaveLength(0);
+    expect(ticketRows).toHaveLength(1);
 
     // Retrying with a working provider must create the ticket and message
     // together, proving the failed attempt left no orphaned ticket behind.
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
     const retriedTickets = await db.select().from(tickets).where(eq(tickets.providerThreadId, threadId));
     expect(retriedTickets).toHaveLength(1);
   });
 
-  it("downloads and stores attachments against the inserted message", async () => {
+  it("stores attachment metadata and its provider reference", async () => {
     const message = buildMessage({
       attachments: [{ id: "att-1", filename: "log.txt", contentType: "text/plain" }],
     });
 
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
 
     const [ticketMessage] = await db
       .select()
@@ -317,7 +309,8 @@ describe("ingestMessage", () => {
       .where(eq(attachments.ticketMessageId, ticketMessage.id));
 
     expect(attachment.filename).toBe("log.txt");
-    expect(attachment.sizeBytes).toBe(Buffer.from("attachment content").byteLength);
+    expect(attachment.sizeBytes).toBe(0);
+    expect(attachment.providerAttachmentId).toBe("att-1");
   });
 
   it("attaches a message to an existing ticket when created by a concurrent insert", async () => {
@@ -339,7 +332,7 @@ describe("ingestMessage", () => {
     // Now call ingestMessage with a message on the same thread. Because the
     // ticket already exists, the pre-check finds it and uses it directly.
     const message = buildMessage({ providerThreadId: threadId });
-    await ingestMessage(connectionId, message, fakeProvider, "access-token");
+    await ingestMessage(connectionId, message);
 
     // Assert that only one ticket exists for this thread and the message is
     // attached to the ticket created by the concurrent cycle.

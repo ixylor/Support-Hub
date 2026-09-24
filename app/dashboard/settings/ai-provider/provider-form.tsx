@@ -23,11 +23,10 @@ import {
 } from "@/components/ui/table";
 import type { DeploymentRole } from "@/lib/ai/config";
 
-const ROLES: DeploymentRole[] = ["chat", "embedding", "extraction"];
+const ROLES: DeploymentRole[] = ["chat", "embedding"];
 const ROLE_LABELS: Record<DeploymentRole, string> = {
   chat: "Chat",
   embedding: "Embedding",
-  extraction: "Extraction",
 };
 
 interface DeploymentRowView {

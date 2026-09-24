@@ -38,7 +38,6 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArticleDialog } from "./article-dialog";
-import { UploadDialog } from "./upload-dialog";
 
 interface EntryView {
   id: string;
@@ -200,7 +199,7 @@ function RowActions({ entry }: { entry: EntryView }) {
         />
         <DropdownMenuContent>
           {canRetry ? <DropdownMenuItem onClick={handleRetry}>Retry</DropdownMenuItem> : null}
-          <DropdownMenuItem onClick={handleView}>View extracted text</DropdownMenuItem>
+          <DropdownMenuItem onClick={handleView}>View text</DropdownMenuItem>
           <DropdownMenuItem variant="destructive" onClick={() => setConfirmingDelete(true)}>
             Delete
           </DropdownMenuItem>
@@ -215,14 +214,14 @@ function RowActions({ entry }: { entry: EntryView }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &ldquo;{entry.title}&rdquo;?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently removes the document and its indexed chunks. This cannot be undone.
+            This permanently removes the article and its indexed chunks. This cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={busy}>
-            Delete document
+            Delete article
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -230,11 +229,10 @@ function RowActions({ entry }: { entry: EntryView }) {
   );
 }
 
-function Toolbar({ canUpload, knownTags }: { canUpload: boolean; knownTags: string[] }) {
-  if (canUpload) {
+function Toolbar({ canCreate, knownTags }: { canCreate: boolean; knownTags: string[] }) {
+  if (canCreate) {
     return (
       <div className="flex gap-2">
-        <UploadDialog knownTags={knownTags} />
         <ArticleDialog knownTags={knownTags} />
       </div>
     );
@@ -246,23 +244,11 @@ function Toolbar({ canUpload, knownTags }: { canUpload: boolean; knownTags: stri
         <TooltipTrigger
           render={
             <span>
-              <Button disabled>Upload document</Button>
+              <Button disabled>Write article</Button>
             </span>
           }
         />
-        <TooltipContent>Configure an AI provider before adding documents.</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span>
-              <Button variant="outline" disabled>
-                Write article
-              </Button>
-            </span>
-          }
-        />
-        <TooltipContent>Configure an AI provider before adding documents.</TooltipContent>
+        <TooltipContent>Configure an AI provider before adding articles.</TooltipContent>
       </Tooltip>
     </div>
   );
@@ -271,22 +257,22 @@ function Toolbar({ canUpload, knownTags }: { canUpload: boolean; knownTags: stri
 export function DocumentList({
   entries,
   knownTags,
-  canUpload,
+  canCreate,
 }: {
   entries: EntryView[];
   knownTags: string[];
-  canUpload: boolean;
+  canCreate: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <Toolbar canUpload={canUpload} knownTags={knownTags} />
+      <Toolbar canCreate={canCreate} knownTags={knownTags} />
 
       {entries.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
-            <EmptyTitle>No documents yet</EmptyTitle>
+            <EmptyTitle>No articles yet</EmptyTitle>
             <EmptyDescription>
-              Upload a file or write an article to start building the knowledge base.
+              Write a text article to start building the knowledge base.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -316,7 +302,7 @@ export function DocumentList({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="capitalize">{entry.sourceType}</TableCell>
+                  <TableCell>Article</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {entry.tags.map((tag) => (

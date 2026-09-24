@@ -1,34 +1,16 @@
-import { rm } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { attachments, deletedGoogleThreads, mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
-import { attachmentsDir } from "@/lib/ingestion/attachment-storage";
+import { deletedGoogleThreads, mailboxConnections, tickets } from "@/lib/db/schema";
 
 export const DELETABLE_TICKET_STATUSES = ["resolved", "triaged_out"] as const;
 export type DeletableTicketStatus = (typeof DELETABLE_TICKET_STATUSES)[number];
 
 export type DeleteTicketResult =
-  | { ok: true; attachmentPaths: string[] }
+  | { ok: true }
   | { ok: false; reason: "not_found" | "not_deletable" };
 
 function isDeletableStatus(status: string): status is DeletableTicketStatus {
   return (DELETABLE_TICKET_STATUSES as readonly string[]).includes(status);
-}
-
-function safeAttachmentPath(path: string): boolean {
-  const base = resolve(attachmentsDir());
-  const target = resolve(path);
-  const child = relative(base, target);
-  return child !== "" && child !== "." && !child.startsWith("..") && !isAbsolute(child);
-}
-
-async function removeAttachmentFiles(paths: string[]): Promise<void> {
-  await Promise.all(
-    paths
-      .filter(safeAttachmentPath)
-      .map((path) => rm(path, { force: true }).catch(() => undefined))
-  );
 }
 
 async function removeCheckpoints(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], ticketId: string) {
@@ -87,12 +69,6 @@ export async function deleteTicket(ticketId: string): Promise<DeleteTicketResult
         });
     }
 
-    const attachmentRows = await tx
-      .select({ storagePath: attachments.storagePath })
-      .from(attachments)
-      .innerJoin(ticketMessages, eq(ticketMessages.id, attachments.ticketMessageId))
-      .where(eq(ticketMessages.ticketId, ticketId));
-
     const deleted = await tx
       .delete(tickets)
       .where(and(eq(tickets.id, ticketId), inArray(tickets.status, DELETABLE_TICKET_STATUSES)))
@@ -104,12 +80,8 @@ export async function deleteTicket(ticketId: string): Promise<DeleteTicketResult
 
     await removeCheckpoints(tx, ticketId);
 
-    return {
-      ok: true as const,
-      attachmentPaths: attachmentRows.map((row) => row.storagePath),
-    };
+    return { ok: true as const };
   });
 
-  if (result.ok) await removeAttachmentFiles(result.attachmentPaths);
   return result;
 }

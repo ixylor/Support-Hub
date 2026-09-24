@@ -179,16 +179,12 @@ export const attachments = pgTable("attachments", {
     .notNull()
     .references(() => ticketMessages.id, { onDelete: "cascade" }),
   filename: text("filename").notNull(),
-  storagePath: text("storage_path").notNull(),
+  providerAttachmentId: text("provider_attachment_id"),
   contentType: text("content_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
 });
 
 export const kbSourceTypeEnum = pgEnum("kb_source_type", [
-  "pdf",
-  "docx",
-  "text",
-  "markdown",
   "article",
 ]);
 
@@ -204,14 +200,8 @@ export const kbEntries = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     title: text("title").notNull(),
-    // Extracted text. Null until the parser has run.
-    content: text("content"),
+    content: text("content").notNull(),
     sourceType: kbSourceTypeEnum("source_type").notNull(),
-    // All null for a typed-in article, which has no underlying file.
-    storagePath: text("storage_path"),
-    originalFilename: text("original_filename"),
-    contentType: text("content_type"),
-    sizeBytes: integer("size_bytes"),
     status: kbStatusEnum("status").notNull().default("pending"),
     errorMessage: text("error_message"),
     uploadedByUserId: text("uploaded_by_user_id").references(() => user.id),
@@ -341,7 +331,6 @@ export const appSecrets = pgTable("app_secrets", {
 export const aiDeploymentRoleEnum = pgEnum("ai_deployment_role", [
   "chat",
   "embedding",
-  "extraction",
 ]);
 
 // Deployments are rows rather than fixed secret keys so an admin can add a new

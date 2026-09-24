@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import {
   createArticleEntry,
-  createUploadedEntry,
   knowledgeBaseReadiness,
   listEntries,
 } from "@/lib/kb/entries";
@@ -27,7 +26,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await requireAdmin();
   if (!session) {
-    return NextResponse.json({ error: "Only admins can add documents." }, { status: 403 });
+    return NextResponse.json({ error: "Only admins can add knowledge base articles." }, { status: 403 });
   }
 
   const readiness = await knowledgeBaseReadiness();
@@ -35,36 +34,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: readiness.reason }, { status: 409 });
   }
 
-  const contentType = request.headers.get("content-type") ?? "";
-
   try {
-    if (contentType.includes("multipart/form-data")) {
-      const form = await request.formData();
-      const file = form.get("file");
-
-      if (!(file instanceof File)) {
-        return NextResponse.json({ error: "A file is required." }, { status: 400 });
-      }
-
-      const id = await createUploadedEntry({
-        title: String(form.get("title") ?? file.name),
-        tags: String(form.get("tags") ?? "")
-          .split(",")
-          .filter((tag) => tag.trim() !== ""),
-        filename: file.name,
-        contentType: file.type,
-        content: Buffer.from(await file.arrayBuffer()),
-        uploadedByUserId: session.user.id,
-      });
-
-      return NextResponse.json({ id }, { status: 201 });
-    }
-
     const body = (await request.json()) as { title?: unknown; body?: unknown; tags?: unknown };
 
     if (typeof body.title !== "string" || typeof body.body !== "string") {
       return NextResponse.json(
-        { error: "title and body are required strings." },
+        { error: "title and body text are required strings." },
         { status: 400 }
       );
     }

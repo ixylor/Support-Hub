@@ -65,7 +65,7 @@ export async function pollMailboxOnce(): Promise<{ ingested: number; reason?: st
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
     try {
-      await ingestMessage(connection.id, message, provider, accessToken);
+      await ingestMessage(connection.id, message);
       ingested += 1;
       if (!runBroken) {
         consecutiveSuccessEnd = i;

@@ -2,6 +2,7 @@ export interface AttachmentRef {
   id: string;
   filename: string;
   contentType: string;
+  sizeBytes?: number;
 }
 
 export interface ProviderMessage {
@@ -39,6 +40,7 @@ export interface MailProvider {
   ): Promise<OAuthTokens>;
   refreshAccessToken(clientId: string, clientSecret: string, refreshToken: string): Promise<string>;
   getNewMessages(accessToken: string, cursor: string | null): Promise<FetchMessagesResult>;
+  listAttachments?(accessToken: string, providerMessageId: string): Promise<AttachmentRef[]>;
   downloadAttachment(
     accessToken: string,
     providerMessageId: string,

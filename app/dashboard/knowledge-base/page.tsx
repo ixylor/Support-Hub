@@ -23,7 +23,7 @@ export default async function KnowledgeBasePage() {
       <div>
         <h1 className="text-xl font-semibold">Knowledge Base</h1>
         <p className="text-muted-foreground text-sm">
-          Documents the AI draws on when drafting replies.
+          Text articles the AI draws on when drafting replies.
         </p>
       </div>
 
@@ -31,7 +31,7 @@ export default async function KnowledgeBasePage() {
         <Alert variant="destructive">
           <AlertTitle>AI provider not configured</AlertTitle>
           <AlertDescription>
-            {readiness.reason} Documents cannot be processed until this is resolved.
+            {readiness.reason} Articles cannot be indexed until this is resolved.
           </AlertDescription>
         </Alert>
       )}
@@ -39,7 +39,7 @@ export default async function KnowledgeBasePage() {
       <DocumentList
         entries={entries.map((entry) => ({ ...entry, updatedAt: entry.updatedAt.toISOString() }))}
         knownTags={tags}
-        canUpload={readiness.ready}
+        canCreate={readiness.ready}
       />
 
       <div className="space-y-2">

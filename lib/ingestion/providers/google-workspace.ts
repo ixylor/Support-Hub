@@ -79,7 +79,7 @@ async function refreshAccessToken(
 interface GmailPart {
   mimeType: string;
   filename?: string;
-  body: { data?: string; attachmentId?: string };
+  body: { data?: string; attachmentId?: string; size?: number };
   parts?: GmailPart[];
 }
 
@@ -100,7 +100,12 @@ function collectAttachments(parts: GmailPart[]): AttachmentRef[] {
   const attachments: AttachmentRef[] = [];
   for (const part of parts) {
     if (part.filename && part.body.attachmentId) {
-      attachments.push({ id: part.body.attachmentId, filename: part.filename, contentType: part.mimeType });
+      attachments.push({
+        id: part.body.attachmentId,
+        filename: part.filename,
+        contentType: part.mimeType,
+        sizeBytes: part.body.size,
+      });
     }
     if (part.parts) {
       attachments.push(...collectAttachments(part.parts));
@@ -209,10 +214,23 @@ async function downloadAttachment(
   return Buffer.from(data.data, "base64url");
 }
 
+async function listAttachments(accessToken: string, providerMessageId: string): Promise<AttachmentRef[]> {
+  const response = await fetch(
+    `${GMAIL_BASE}/messages/${encodeURIComponent(providerMessageId)}?format=full`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Gmail message attachment lookup failed: ${response.status}`);
+  }
+  const message = (await response.json()) as { payload?: { parts?: GmailPart[] } };
+  return collectAttachments(message.payload?.parts ?? []);
+}
+
 export const googleWorkspaceProvider: MailProvider = {
   getAuthorizationUrl,
   exchangeCodeForTokens,
   refreshAccessToken,
   getNewMessages,
+  listAttachments,
   downloadAttachment,
 };

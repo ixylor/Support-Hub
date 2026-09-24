@@ -1,11 +1,8 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { getActiveDeployment, getAzureCredentials, type DeploymentRole } from "@/lib/ai/config";
 import { embedTexts } from "@/lib/ai/embeddings";
-import { pdfParser } from "@/lib/kb/parsers/pdf";
 
 // One real call per role. A wrong deployment name then surfaces here rather
 // than as a pile of failed jobs an hour later.
@@ -18,8 +15,8 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { role?: unknown } | null;
   const role = body?.role as DeploymentRole | undefined;
 
-  if (role !== "chat" && role !== "embedding" && role !== "extraction") {
-    return NextResponse.json({ error: "role must be chat, embedding or extraction." }, { status: 400 });
+  if (role !== "chat" && role !== "embedding") {
+    return NextResponse.json({ error: "role must be chat or embedding." }, { status: 400 });
   }
 
   const credentials = await getAzureCredentials();
@@ -35,9 +32,6 @@ export async function POST(request: Request) {
   try {
     if (role === "embedding") {
       await embedTexts(["connection test"]);
-    } else if (role === "extraction") {
-      const fixture = join(process.cwd(), "lib/kb/parsers/fixtures/sample.pdf");
-      await pdfParser.extract(await readFile(fixture));
     } else {
       const response = await fetch(
         `${credentials.endpoint}/openai/deployments/${deployment.deploymentName}/chat/completions?api-version=${credentials.apiVersion}`,

@@ -48,60 +48,20 @@ test.describe("knowledge base", () => {
   // doing that here would mean mocking the provider inside an E2E test, which
   // defeats the point of testing the real stack. This exercises the blocked
   // path that exists today instead of faking a pass on the happy path.
-  test("an admin without a configured AI provider is blocked from adding documents", async ({
+  test("an admin without a configured AI provider is blocked from adding text articles", async ({
     page,
   }) => {
     const readiness = await knowledgeBaseReadiness();
     test.skip(
       readiness.ready,
-      "An AI provider is configured in this environment; the blocked-upload path doesn't apply here."
+      "An AI provider is configured in this environment; the blocked-article path doesn't apply here."
     );
 
     await signIn(page, adminEmail);
     await page.goto("/dashboard/knowledge-base");
 
     await expect(page.getByText("AI provider not configured")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Upload document" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Write article" })).toBeDisabled();
-  });
-
-  // Requires both the worker (started via playwright.config.ts's webServer
-  // array) and a configured Azure OpenAI embedding deployment. The latter can
-  // only be set up by a human through the AI Provider page, so this test
-  // skips cleanly rather than asserting nothing when it's missing.
-  test("an admin uploads a document, it becomes ready, and retrieval finds it", async ({
-    page,
-  }) => {
-    const readiness = await knowledgeBaseReadiness();
-    test.skip(
-      !readiness.ready,
-      "No AI provider is configured in this environment — configure Azure OpenAI " +
-        "credentials and an embedding deployment via Settings → AI Provider to run this test."
-    );
-
-    await signIn(page, adminEmail);
-    await page.goto("/dashboard/knowledge-base");
-
-    await page.getByRole("button", { name: "Upload document" }).click();
-    await page.setInputFiles("input[type=file]", "e2e/fixtures/kb-sample.md");
-    await page.getByLabel("Title").fill("Warranty policy");
-    await page.getByRole("button", { name: "Upload" }).click();
-
-    const row = page.getByRole("row", { name: /Warranty policy/ });
-    await expect(row).toBeVisible();
-
-    // The worker processes asynchronously; poll the list rather than sleeping.
-    await expect(async () => {
-      await page.reload();
-      await expect(row.getByText("Ready")).toBeVisible();
-    }).toPass({ timeout: 60_000 });
-
-    await page.getByLabel("Test retrieval query").fill("WARR_8891");
-    await page.getByRole("button", { name: "Search" }).click();
-
-    await expect(page.getByText("Warranty policy")).toBeVisible();
-
-    await db.delete(kbEntries).where(eq(kbEntries.title, "Warranty policy"));
   });
 
   test("an admin adds a free-form tag to the retrieval filter", async ({ page }) => {
@@ -116,13 +76,13 @@ test.describe("knowledge base", () => {
     await expect(tagInput).toHaveValue("");
   });
 
-  test("an admin views the extracted text of a document", async ({ page }) => {
+  test("an admin views the text of an article", async ({ page }) => {
     const [admin] = await db.select({ id: user.id }).from(user).where(eq(user.email, adminEmail));
     const title = `Seeded for preview ${randomUUID()}`;
-    const content = "Extracted body text for the preview dialog.";
+    const content = "Article body text for the preview dialog.";
     await db.insert(kbEntries).values({
       title,
-      sourceType: "pdf",
+      sourceType: "article",
       status: "ready",
       content,
       uploadedByUserId: admin.id,
@@ -133,7 +93,7 @@ test.describe("knowledge base", () => {
 
     const row = page.getByRole("row", { name: new RegExp(title) });
     await row.getByRole("button", { name: "Actions" }).click();
-    await page.getByRole("menuitem", { name: "View extracted text" }).click();
+    await page.getByRole("menuitem", { name: "View text" }).click();
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -142,15 +102,13 @@ test.describe("knowledge base", () => {
     await db.delete(kbEntries).where(eq(kbEntries.title, title));
   });
 
-  test("an admin deletes a document", async ({ page }) => {
-    // Seeded directly rather than relying on the upload test's output: that
-    // test skips when no AI provider is configured, and this one shouldn't
-    // depend on that.
+  test("an admin deletes a text article", async ({ page }) => {
     const [admin] = await db.select({ id: user.id }).from(user).where(eq(user.email, adminEmail));
     const title = `Seeded for deletion ${randomUUID()}`;
     await db.insert(kbEntries).values({
       title,
       sourceType: "article",
+      content: "Text article to delete.",
       status: "ready",
       uploadedByUserId: admin.id,
     });

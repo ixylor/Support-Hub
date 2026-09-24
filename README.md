@@ -1,8 +1,7 @@
 # Support Hub
 
 An internal support ticketing app with role-aware agent/admin access, backed
-by Postgres (with `pgvector` for future knowledge-base embeddings) and
-Better Auth.
+by Postgres (with `pgvector` for knowledge-base embeddings) and Better Auth.
 
 ## Prerequisites
 

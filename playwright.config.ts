@@ -69,8 +69,8 @@ export default defineConfig({
       },
     },
     {
-      // The knowledge base upload test needs a running worker to move a
-      // document from pending to ready. It has no HTTP endpoint of its own,
+      // The knowledge base text article flow needs a running worker to move
+      // an article from pending to ready. It has no HTTP endpoint of its own,
       // so readiness is detected from its startup log line rather than a
       // port or URL.
       //

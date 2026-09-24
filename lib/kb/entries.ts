@@ -3,11 +3,7 @@ import { db } from "@/lib/db/client";
 import { kbChunks, kbEntries } from "@/lib/db/schema";
 import { getActiveDeployment, getAzureCredentials } from "@/lib/ai/config";
 import { QUEUES, enqueue } from "@/lib/jobs/boss";
-import { SUPPORTED_CONTENT_TYPES, normalizeContentType } from "./parsers";
-import { deleteKbFile, saveKbFile } from "./storage";
 import { normalizeTags } from "./tags";
-
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export interface KbEntrySummary {
   id: string;
@@ -47,49 +43,6 @@ export async function knowledgeBaseReadiness(): Promise<{ ready: boolean; reason
   return { ready: true };
 }
 
-export async function createUploadedEntry(input: {
-  title: string;
-  tags: string[];
-  filename: string;
-  contentType: string;
-  content: Buffer;
-  uploadedByUserId: string;
-}): Promise<string> {
-  const title = requireTitle(input.title);
-  const contentType = normalizeContentType(input.contentType);
-  const sourceType = SUPPORTED_CONTENT_TYPES[contentType];
-
-  if (!sourceType) {
-    throw new Error(`Files of type ${contentType} are not supported.`);
-  }
-
-  if (input.content.byteLength > MAX_UPLOAD_BYTES) {
-    throw new Error(
-      `File is too large. The limit is ${Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024))} MB.`
-    );
-  }
-
-  const [entry] = await db
-    .insert(kbEntries)
-    .values({
-      title,
-      sourceType,
-      contentType,
-      originalFilename: input.filename,
-      sizeBytes: input.content.byteLength,
-      tags: normalizeTags(input.tags),
-      uploadedByUserId: input.uploadedByUserId,
-    })
-    .returning({ id: kbEntries.id });
-
-  // The storage path is keyed by the entry id, so the row has to exist first.
-  const storagePath = await saveKbFile(entry.id, input.filename, input.content);
-  await db.update(kbEntries).set({ storagePath }).where(eq(kbEntries.id, entry.id));
-
-  await enqueue(QUEUES.kbProcess, { entryId: entry.id });
-  return entry.id;
-}
-
 export async function createArticleEntry(input: {
   title: string;
   tags: string[];
@@ -97,13 +50,17 @@ export async function createArticleEntry(input: {
   uploadedByUserId: string;
 }): Promise<string> {
   const title = requireTitle(input.title);
+  const content = input.body.trim();
+  if (content === "") {
+    throw new Error("Article text is required.");
+  }
 
   const [entry] = await db
     .insert(kbEntries)
     .values({
       title,
       sourceType: "article",
-      content: input.body,
+      content,
       tags: normalizeTags(input.tags),
       uploadedByUserId: input.uploadedByUserId,
     })
@@ -140,19 +97,8 @@ export async function listTags(): Promise<string[]> {
 }
 
 export async function deleteEntry(id: string): Promise<void> {
-  const [entry] = await db
-    .select({ storagePath: kbEntries.storagePath })
-    .from(kbEntries)
-    .where(eq(kbEntries.id, id));
-
   // kb_chunks cascades on the foreign key, so one delete is enough for the rows.
   await db.delete(kbEntries).where(eq(kbEntries.id, id));
-
-  // Articles have no storagePath; an uploaded file does and would otherwise
-  // be left behind on disk with nothing left in the database to point at it.
-  if (entry?.storagePath) {
-    await deleteKbFile(entry.storagePath);
-  }
 }
 
 export async function requeueEntry(id: string): Promise<void> {

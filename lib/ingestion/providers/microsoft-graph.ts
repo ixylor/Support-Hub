@@ -83,14 +83,21 @@ function stripHtml(html: string): string {
 
 async function listAttachments(accessToken: string, messageId: string): Promise<AttachmentRef[]> {
   const response = await fetch(
-    `${GRAPH_BASE}/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType`,
+    `${GRAPH_BASE}/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!response.ok) {
     throw new Error(`Microsoft Graph attachment list failed: ${response.status}`);
   }
-  const data = (await response.json()) as { value: Array<{ id: string; name: string; contentType: string }> };
-  return data.value.map((item) => ({ id: item.id, filename: item.name, contentType: item.contentType }));
+  const data = (await response.json()) as {
+    value: Array<{ id: string; name: string; contentType: string; size?: number }>;
+  };
+  return data.value.map((item) => ({
+    id: item.id,
+    filename: item.name,
+    contentType: item.contentType,
+    sizeBytes: item.size,
+  }));
 }
 
 async function getNewMessages(accessToken: string, cursor: string | null) {
@@ -157,5 +164,6 @@ export const microsoftGraphProvider: MailProvider = {
   exchangeCodeForTokens,
   refreshAccessToken,
   getNewMessages,
+  listAttachments,
   downloadAttachment,
 };

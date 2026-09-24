@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/server";
 import { activateDeployment, deactivateDeployment, type DeploymentRole } from "@/lib/ai/config";
 
-const ROLES: DeploymentRole[] = ["chat", "embedding", "extraction"];
+const ROLES: DeploymentRole[] = ["chat", "embedding"];
 
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });

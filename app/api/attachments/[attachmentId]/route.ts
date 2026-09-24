@@ -1,18 +1,17 @@
-import { readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth/server";
 import { db } from "@/lib/db/client";
-import { attachments, ticketMessages, tickets } from "@/lib/db/schema";
-import { attachmentsDir } from "@/lib/ingestion/attachment-storage";
+import { attachments, mailboxConnections, ticketMessages, tickets } from "@/lib/db/schema";
+import { getSecret } from "@/lib/secrets/store";
+import { getDecryptedRefreshToken } from "@/lib/mailbox/connection";
+import { clientIdSecretKey, clientSecretSecretKey } from "@/lib/mailbox/oauth-credentials";
+import { getMailProvider } from "@/lib/ingestion/providers";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Content types genuinely safe to render inline in the browser. Everything
-// else — including image/svg+xml and text/html, both of which can carry
-// script — is forced to download. An inline SVG/HTML attachment served from
-// our own origin would otherwise be stored XSS against the dashboard.
+// Only these content types are safe to render inline. In particular, SVG and
+// HTML files are downloaded to avoid serving active content from our origin.
 const INLINE_CONTENT_TYPES = new Set([
   "image/png",
   "image/jpeg",
@@ -30,77 +29,89 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ attachmentId: string }> }
 ) {
-  // A Route Handler's own request already carries the Cookie header, so we
-  // read the session straight off it. Equivalent to the dashboard pages'
-  // auth.api.getSession({ headers: await headers() }), but doesn't depend
-  // on Next's internal request-scope storage, which keeps this handler
-  // unit-testable by calling GET() directly.
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { attachmentId } = await params;
-  if (!UUID_PATTERN.test(attachmentId)) {
-    return notFound();
-  }
+  if (!UUID_PATTERN.test(attachmentId)) return notFound();
 
-  // Look the file up by id — never trust a client-supplied path. The joins
-  // carry the parent ticket along so visibility is decided in the same
-  // query, before any bytes are read off disk.
   const viewer = session.user as { id: string; role: string };
   const [attachment] = await db
     .select({
       filename: attachments.filename,
-      storagePath: attachments.storagePath,
+      providerAttachmentId: attachments.providerAttachmentId,
       contentType: attachments.contentType,
-      assignedToUserId: tickets.assignedToUserId,
+      sizeBytes: attachments.sizeBytes,
+      providerMessageId: ticketMessages.providerMessageId,
+      mailboxConnectionId: mailboxConnections.id,
+      provider: mailboxConnections.provider,
     })
     .from(attachments)
     .innerJoin(ticketMessages, eq(ticketMessages.id, attachments.ticketMessageId))
     .innerJoin(tickets, eq(tickets.id, ticketMessages.ticketId))
+    .innerJoin(mailboxConnections, eq(mailboxConnections.id, tickets.mailboxConnectionId))
     .where(
-      // Same rule as lib/tickets/queries.ts: admins reach every ticket,
-      // agents only the ones assigned to them. Without this an agent could
-      // pull attachments off a ticket they cannot open.
       viewer.role === "admin"
         ? eq(attachments.id, attachmentId)
         : and(eq(attachments.id, attachmentId), eq(tickets.assignedToUserId, viewer.id))
     );
-  if (!attachment) {
-    return notFound();
-  }
 
-  // Re-validate containment on read rather than trusting storagePath as
-  // stored: resolve it and confirm it is still inside the configured
-  // attachments directory, the same check attachment-storage.ts makes on
-  // write.
-  const baseDir = resolve(attachmentsDir());
-  const resolvedPath = resolve(attachment.storagePath);
-  const relativePath = relative(baseDir, resolvedPath);
-  if (relativePath.startsWith("..") || relativePath === "" || relativePath === ".") {
-    return notFound();
-  }
+  if (!attachment) return notFound();
 
-  let fileBuffer: Buffer;
   try {
-    fileBuffer = await readFile(resolvedPath);
-  } catch {
-    return notFound();
+    const clientId = await getSecret(clientIdSecretKey(attachment.provider));
+    const clientSecret = await getSecret(clientSecretSecretKey(attachment.provider));
+    if (!clientId || !clientSecret) {
+      return NextResponse.json({ error: "Mailbox OAuth credentials are unavailable." }, { status: 503 });
+    }
+
+    const provider = getMailProvider(attachment.provider);
+    const refreshToken = await getDecryptedRefreshToken(attachment.mailboxConnectionId);
+    const accessToken = await provider.refreshAccessToken(clientId, clientSecret, refreshToken);
+    let providerAttachmentId = attachment.providerAttachmentId;
+    if (!providerAttachmentId) {
+      // Backfill references for attachments ingested before live retrieval was
+      // introduced, using the metadata already kept for attachment history.
+      if (!provider.listAttachments) return notFound();
+      const candidates = (await provider.listAttachments(accessToken, attachment.providerMessageId))
+        .filter((candidate) => candidate.filename === attachment.filename)
+        .filter((candidate) => candidate.contentType === attachment.contentType)
+        .filter((candidate) => !attachment.sizeBytes || candidate.sizeBytes === attachment.sizeBytes);
+      if (candidates.length !== 1) return notFound();
+      providerAttachmentId = candidates[0].id;
+      await db
+        .update(attachments)
+        .set({ providerAttachmentId })
+        .where(eq(attachments.id, attachmentId));
+    }
+
+    const fileBuffer = await provider.downloadAttachment(accessToken, attachment.providerMessageId, {
+      id: providerAttachmentId,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+    });
+
+    const mimeType = attachment.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+    const disposition = INLINE_CONTENT_TYPES.has(mimeType) ? "inline" : "attachment";
+    const asciiFallbackName = attachment.filename.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "");
+    const encodedFilename = encodeURIComponent(attachment.filename);
+
+    return new Response(new Uint8Array(fileBuffer), {
+      headers: {
+        "Content-Type": attachment.contentType,
+        "Content-Disposition": `${disposition}; filename="${asciiFallbackName}"; filename*=UTF-8''${encodedFilename}`,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Length": String(fileBuffer.byteLength),
+        "Cache-Control": "private, max-age=0, no-cache",
+      },
+    });
+  } catch (error) {
+    console.error(`Live attachment fetch failed for ${attachmentId}:`, error);
+    return NextResponse.json(
+      { error: "The attachment could not be fetched from the mailbox." },
+      { status: 502 }
+    );
   }
-
-  const mimeType = attachment.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  const disposition = INLINE_CONTENT_TYPES.has(mimeType) ? "inline" : "attachment";
-  const asciiFallbackName = attachment.filename.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "");
-  const encodedFilename = encodeURIComponent(attachment.filename);
-
-  return new Response(new Uint8Array(fileBuffer), {
-    headers: {
-      "Content-Type": attachment.contentType,
-      "Content-Disposition": `${disposition}; filename="${asciiFallbackName}"; filename*=UTF-8''${encodedFilename}`,
-      "X-Content-Type-Options": "nosniff",
-      "Content-Length": String(fileBuffer.byteLength),
-      "Cache-Control": "private, max-age=0, no-cache",
-    },
-  });
 }

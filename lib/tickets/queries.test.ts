@@ -246,7 +246,7 @@ describe("tickets queries", () => {
     await db.insert(attachments).values({
       ticketMessageId: firstMessage.id,
       filename: "log.txt",
-      storagePath: "unused",
+      providerAttachmentId: "provider-attachment-id",
       contentType: "text/plain",
       sizeBytes: 42,
     });
